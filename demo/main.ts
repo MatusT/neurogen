@@ -138,6 +138,12 @@ function run(device: GPUDevice, context: GPUCanvasContext, format: GPUTextureFor
         report.textContent = `measurement failed: ${String(error)}`;
       })
       .finally(() => {
+        // The measurement holds the loop for a second or so. Restart the rate
+        // window with it, or the next one averages over the pause and reports
+        // half the frame rate the demo is actually running at.
+        windowStart = performance.now();
+        presentedInWindow = 0;
+        realInWindow = 0;
         paused = false;
         verifyButton.disabled = false;
       });

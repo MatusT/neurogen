@@ -147,7 +147,9 @@ describe("frame generation timing", () => {
   });
 
   it("puts the interpolated marker at the temporal midpoint", () => {
-    expect(formatMeasurement(measurement)).toBeTypeOf("string");
+    // Printed because the figures are the point: a pass says the error is under
+    // a pixel, and the reviewer wants to know it is 0.00 and not 0.99.
+    console.log("\n" + formatMeasurement(measurement));
     expect(measurement.error).toBeLessThan(measurement.tolerance);
   });
 
