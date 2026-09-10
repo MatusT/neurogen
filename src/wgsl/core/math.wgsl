@@ -14,11 +14,6 @@
 //   ffxFract          -> fract(x)
 //   ffxBroadcastN(v)  -> vecN<T>(v)
 
-// IEEE 754 binary16 max finite value; FSR3 uses 1/this as a safe tonemap
-// denominator epsilon.
-const FFX_FP16_MAX: f32 = 65504.0;
-const FFX_TONEMAP_EPSILON: f32 = 1.0 / FFX_FP16_MAX;
-
 // SMPTE ST 2084 (PQ) EOTF constants.
 const PQ_C1: f32 = 0.835938;
 const PQ_C2: f32 = 18.8516;
