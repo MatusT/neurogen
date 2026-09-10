@@ -113,6 +113,19 @@ describe("trained blend weight network", () => {
     expect(evaluateNetwork(trainedNetwork, darkSingleSource)).toBeLessThan(0.05);
   });
 
+  // The endpoint rescale only rescues an output already within its epsilon of
+  // 1, so the margin the weights hold at the ends is a property, not a
+  // coincidence: a retrain that left a hole at 0.998 would silently restore the
+  // inpainting break. Exhaustive over the runtime input domain — the mask is
+  // binarised, so a hole is exactly (0, 0) and only the luma varies.
+  it("snaps every hole to exactly 1 across the whole luma range", () => {
+    const lumaSteps = 1000;
+    for (let step = 0; step <= lumaSteps; step++) {
+      const weight = snapEndpoints(evaluateNetwork(trainedNetwork, [0, 0, step / lumaSteps]));
+      expect(1 - weight).toBe(0);
+    }
+  });
+
   it("beats the classical formula and both constant baselines on unseen samples", () => {
     const trained = meanSquaredError((features) => evaluateNetwork(trainedNetwork, features));
     const classical = meanSquaredError(classicalBlendWeight);
@@ -144,11 +157,13 @@ function fixtureMask(index: number): number[] {
   return [index % 2, Math.floor(index / 2) % 2];
 }
 
-// Spans 0..1.33 so some pixels drive the kernel's saturate, and keeps the
-// channels unequal so a wrong luma coefficient cannot cancel out.
+// Luma spans 0..1.075, so pixel 0 is the darkest possible hole -- where the
+// network is least certain -- and the brightest pixels drive the kernel's
+// saturate. The channels are kept unequal so a wrong luma coefficient cannot
+// cancel out.
 function fixtureColor(index: number): number[] {
   const level = ((index * 7) % 17) / 12;
-  return [level, 1 - level * 0.5, level * 0.25, 1];
+  return [level, level * 0.8, level * 0.3, 1];
 }
 
 describe("blend weight kernel on the GPU", () => {
