@@ -80,8 +80,13 @@ fn main(@builtin(global_invocation_id) globalId: vec3<u32>) {
             let pos = base + vec2<i32>(x, y);
             if (!ofInBounds(pos, size)) { continue; }
 
+            // AMD's R8_UINT store bounds this for free. Here the buffer is
+            // u32, and both consumers assume a byte: ofPackLuma() would spill
+            // an overbright pixel into its neighbours' lanes, and the SCD
+            // histogram would bin it out of range. HDR input above the
+            // declared peak luminance reaches this.
             let color = textureLoad(inputColor, pos, 0).rgb;
-            lumaOut[ofFlatIndex(pos, size)] = u32(sceneLuma(color) * LUMA_QUANT_SCALE);
+            lumaOut[ofFlatIndex(pos, size)] = u32(saturate(sceneLuma(color)) * LUMA_QUANT_SCALE);
         }
     }
 }

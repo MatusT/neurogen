@@ -7,8 +7,7 @@
 // dispatch per destination level, each reading the level above it.
 //
 // Only SpdReduce4's operator carries over — a plain 2x2 box average, then
-// truncated by AMD's R8_UINT store. Taps outside the source level read 0, as
-// SPD's texture loads do on odd-sized levels.
+// truncated as AMD's R8_UINT store does.
 //
 // Dispatch, per level 1..pyramidLevelCount-1 with params.pyramidLevel set to
 // the destination level: (ceil(dstW/8), ceil(dstH/8)).
@@ -30,6 +29,8 @@ fn main(@builtin(global_invocation_id) globalId: vec3<u32>) {
     let srcSize = ofLumaLevelSize(params.pyramidLevel - 1u);
     let srcPos = dstPos * DOWNSAMPLE_FACTOR;
 
+    // Floor-halving keeps all four taps inside the source level unless that
+    // level is already one pixel across; those taps read as 0.
     var sum = 0.0;
     for (var y = 0; y < DOWNSAMPLE_FACTOR; y++) {
         for (var x = 0; x < DOWNSAMPLE_FACTOR; x++) {
