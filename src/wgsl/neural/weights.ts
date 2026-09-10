@@ -45,7 +45,7 @@ export function neuralWeightCount(network: NeuralNetworkWeights): number {
 // Throws on a malformed asset rather than packing a short buffer: the shader
 // reads fixed offsets derived from the shape, so a layer of the wrong length
 // silently shifts every later layer's weights instead of failing.
-export function packNeuralWeights(network: NeuralNetworkWeights): Float32Array {
+export function packNeuralWeights(network: NeuralNetworkWeights): Float32Array<ArrayBuffer> {
   const packed = new Float32Array(neuralWeightCount(network));
 
   let offset = 0;

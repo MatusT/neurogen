@@ -1,7 +1,11 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { createGpuHarness, type GpuHarness } from "./gpu-harness.js";
+import { FrameGenerator } from "../src/orchestration/FrameGenerator.js";
 import { OpticalFlowStage } from "../src/orchestration/opticalFlow.js";
+import blendWeightAsset from "../src/wgsl/neural/weights/blend_weight_mlp.json";
+import type { NeuralNetworkWeights } from "../src/wgsl/neural/weights.js";
 import {
+  History,
   packFrameInterpolationParams,
   packOpticalFlowParams,
   TransferFunction,
@@ -133,7 +137,7 @@ describe("uniform packing", () => {
       transferFunction: TransferFunction.Pq,
       luminance: { min: 0.5, max: 1000 },
       inpaintingMipLevel: 3,
-      reset: true,
+      reset: History.Discard,
     });
     const view = new DataView(packed.buffer);
 
@@ -257,6 +261,182 @@ describe("orchestration", () => {
         }
       }
       expect(checked).toBeGreaterThan(0);
+    });
+  });
+});
+
+describe("frame generator", () => {
+  let harness: GpuHarness;
+
+  beforeAll(async () => {
+    harness = await createGpuHarness();
+  });
+
+  const renderSize: Size = [64, 64];
+  const [WIDTH, HEIGHT] = renderSize;
+  const PIXELS = WIDTH * HEIGHT;
+
+  // Past both warmups: scene change detection forces a cut for six frames and
+  // resets the frame counter each time, and preliminary_blend trusts the game
+  // vectors unconditionally for ten frames after that. Only beyond both is the
+  // whole graph — including the game-versus-optical-flow scoring — in play.
+  const SETTLED_FRAMES = 20;
+
+  const PROJECTION = { nearPlane: 0.1, farPlane: 100, verticalFovRadians: Math.PI / 3 };
+
+  function texture(
+    valueAt: (x: number, y: number) => readonly [number, number, number, number],
+  ): GPUTextureView {
+    const texels = new Float32Array(PIXELS * 4);
+    for (let y = 0; y < HEIGHT; y++) {
+      for (let x = 0; x < WIDTH; x++) {
+        texels.set(valueAt(x, y), (y * WIDTH + x) * 4);
+      }
+    }
+
+    return harness.createTexture(WIDTH, HEIGHT, texels).createView();
+  }
+
+  // A horizontal ramp in red and blue, so a pixel warped half a step really is
+  // the midpoint of the two sources' values there and the assertion below can
+  // be exact rather than "plausible". Green carries per-pixel noise, because a
+  // pure ramp gives the optical flow's block matching nothing to lock onto.
+  function translatedFrame(shift: number): GPUTextureView {
+    return texture((x, y) => {
+      const ramp = (x - shift) / WIDTH;
+      return [ramp, noise(x - shift, y), ramp, 1];
+    });
+  }
+
+  const SHIFT_PIXELS = 2;
+
+  function translationInputs() {
+    return {
+      previousColor: translatedFrame(0),
+      currentColor: translatedFrame(SHIFT_PIXELS),
+      depth: texture(() => [0.5, 0, 0, 1]),
+      // Whole pixels from a current-frame pixel to where it was previously.
+      motionVectors: texture(() => [-SHIFT_PIXELS, 0, 0, 1]),
+    };
+  }
+
+  async function generate(
+    inputs: ReturnType<typeof translationInputs>,
+    neuralWeights?: NeuralNetworkWeights,
+  ): Promise<{ color: Float32Array; weight: Float32Array }> {
+    const generator = new FrameGenerator({ device: harness.device });
+    if (neuralWeights) {
+      generator.installNeuralBlendWeight(neuralWeights);
+    }
+    await checked(harness, () => generator.configure({ ...PROJECTION, renderWidth: WIDTH, renderHeight: HEIGHT }));
+
+    let color!: GPUBuffer;
+    for (let frame = 0; frame < SETTLED_FRAMES; frame++) {
+      await checked(harness, () => {
+        generator.prepare(inputs);
+        color = generator.dispatch();
+      });
+    }
+
+    const result = {
+      color: new Float32Array(await harness.readBuffer(color, PIXELS * 16)),
+      weight: new Float32Array(await harness.readBuffer(generator.blendWeight, PIXELS * 4)),
+    };
+    generator.destroy();
+
+    return result;
+  }
+
+  it("lands a uniform translation exactly halfway between the two frames", async () => {
+    const { color } = await generate(translationInputs());
+
+    let worst = 0;
+    for (let y = 0; y < HEIGHT; y++) {
+      for (let x = 0; x < WIDTH; x++) {
+        const index = (y * WIDTH + x) * 4;
+        // Half of a two-pixel step, on a ramp: the midpoint of the two sources.
+        worst = Math.max(worst, Math.abs(color[index] - (x - SHIFT_PIXELS / 2) / WIDTH));
+        expect([x, y, color[index + 3]]).toEqual([x, y, 1]);
+      }
+    }
+
+    expect(worst).toBeLessThan(1e-3);
+    expect(color.every(Number.isFinite)).toBe(true);
+  });
+
+  it("dispatches the neural writer in place of the classical one", async () => {
+    const inputs = translationInputs();
+    const classical = await generate(inputs);
+    const neural = await generate(inputs, blendWeightAsset);
+
+    // The classical formula writes exactly 0 wherever both frames see the
+    // surface. The network is a sigmoid rescaled onto the endpoints, so it can
+    // only reach exactly 0 below its epsilon — a strictly positive weight where
+    // the classical writer put a hard zero is the replacement having run.
+    expect(classical.weight.every((weight) => weight === 0)).toBe(true);
+    expect(Math.max(...neural.weight)).toBeGreaterThan(0);
+    expect(neural.color.every(Number.isFinite)).toBe(true);
+  });
+
+  it("rejects an asset the kernel's hard-coded layer offsets do not fit", () => {
+    const generator = new FrameGenerator({ device: harness.device });
+    const wrongShape = {
+      name: "wrong",
+      layers: [{ inputs: 3, outputs: 4, weights: new Array(12).fill(0), biases: new Array(4).fill(0) }],
+    };
+
+    expect(() => generator.installNeuralBlendWeight(wrongShape)).toThrow(/layer shape/);
+  });
+
+  describe("call order", () => {
+    it("refuses to run before configure()", () => {
+      const generator = new FrameGenerator({ device: harness.device });
+
+      expect(() => generator.dispatch()).toThrow(/configure\(\)/);
+    });
+
+    it("refuses to dispatch a frame that was never prepared", async () => {
+      const generator = new FrameGenerator({ device: harness.device });
+      await checked(harness, () => generator.configure({ ...PROJECTION, renderWidth: WIDTH, renderHeight: HEIGHT }));
+
+      expect(() => generator.dispatch()).toThrow(/before prepare/);
+      generator.destroy();
+    });
+
+    it("refuses to prepare a second frame over one still in flight", async () => {
+      const generator = new FrameGenerator({ device: harness.device });
+      const inputs = translationInputs();
+      await checked(harness, () => generator.configure({ ...PROJECTION, renderWidth: WIDTH, renderHeight: HEIGHT }));
+      await checked(harness, () => generator.prepare(inputs));
+
+      expect(() => generator.prepare(inputs)).toThrow(/without an intervening dispatch/);
+      generator.destroy();
+    });
+  });
+
+  describe("configure", () => {
+    it("rejects a resolution whose colour buffer exceeds the device limit", () => {
+      const generator = new FrameGenerator({ device: harness.device });
+      const limit = harness.device.limits.maxStorageBufferBindingSize;
+      // 16 bytes per texel, so this is one texel past what the limit allows.
+      const height = Math.floor(limit / 16 / 4096) + 1;
+
+      expect(() => generator.configure({ ...PROJECTION, renderWidth: 4096, renderHeight: height }))
+        .toThrow(/maxStorageBufferBindingSize/);
+    });
+
+    it("rejects planes the view-space depth conversion cannot use", () => {
+      const generator = new FrameGenerator({ device: harness.device });
+
+      expect(() =>
+        generator.configure({
+          renderWidth: WIDTH,
+          renderHeight: HEIGHT,
+          nearPlane: 100,
+          farPlane: 0.1,
+          verticalFovRadians: 1,
+        }),
+      ).toThrow(/0 < near < far/);
     });
   });
 });

@@ -13,6 +13,13 @@ export enum TransferFunction {
   ScRgb = 2,
 }
 
+// FrameInterpolationParams.reset — a host-forced history discard, folded into
+// the same counter the GPU-side scene-change verdict drives.
+export enum History {
+  Keep = 0,
+  Discard = 1,
+}
+
 export interface LuminanceRange {
   min: number;
   max: number;
@@ -58,7 +65,7 @@ export interface FrameInterpolationParams {
   transferFunction: TransferFunction;
   luminance: LuminanceRange;
   inpaintingMipLevel: number;
-  reset: boolean;
+  reset: History;
 }
 
 export function packFrameInterpolationParams(
@@ -76,7 +83,7 @@ export function packFrameInterpolationParams(
   view.setFloat32(24, params.luminance.min, true);
   view.setFloat32(28, params.luminance.max, true);
   view.setUint32(32, params.inpaintingMipLevel, true);
-  view.setUint32(36, Number(params.reset), true);
+  view.setUint32(36, params.reset, true);
 
   return bytes;
 }
