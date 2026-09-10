@@ -32,9 +32,6 @@
 // FFX_OPTICALFLOW_BLOCK_SIZE.
 const OF_BLOCK_SIZE: i32 = 8;
 
-// Frozen v1 pyramid depth. Only used to bound the level loop below.
-const OF_MAX_PYRAMID_LEVELS: u32 = 2u;
-
 struct OpticalFlowParams {
     // Level-0 luma dimensions, i.e. the render resolution.
     lumaSize: vec2<i32>,
@@ -59,8 +56,13 @@ struct OpticalFlowSceneChange {
 // which wraps to 0xffffffff if one is ever dispatched at level 0. Clamping
 // turns that mistake into a wrong size rather than an indeterminate shift or a
 // four-billion iteration loop.
+//
+// Bounded by the level count and not the tighter `count - 1`: an unwritten
+// uniform buffer reads as zero, and `0 - 1` would wrap straight back into the
+// loop this exists to stop. Allowing one halving more than any legitimate
+// level needs costs nothing.
 fn ofClampLevel(level: u32) -> u32 {
-    return min(level, OF_MAX_PYRAMID_LEVELS);
+    return min(level, params.pyramidLevelCount);
 }
 
 // The luma pyramid floor-halves per level, matching AMD's level textures and
