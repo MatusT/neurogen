@@ -21,12 +21,12 @@ import { markerAt, markerGeometry, markerPixelX, PROJECTION, projectionFor } fro
 // its first six frames, and the preliminary blend trusts the game motion
 // vectors unconditionally for ten frames after that. Only beyond both is the
 // whole graph in play.
-export const SETTLED_FRAMES = 24;
+const SETTLED_FRAMES = 24;
 
 // The centroid is a subpixel measure over hundreds of rows, so a pixel is a
 // loose bound on a correct warp and far inside the 16px error a whole-frame
 // mistiming would produce at this velocity.
-export const MIDPOINT_TOLERANCE_PIXELS = 1;
+const MIDPOINT_TOLERANCE_PIXELS = 1;
 
 // copyTextureToBuffer's row pitch.
 const COPY_ROW_ALIGNMENT = 256;
@@ -186,7 +186,6 @@ export interface MidpointMeasurement {
 
 export interface MidpointOptions {
   size: readonly [number, number];
-  frames?: number;
   neuralWeights?: NeuralNetworkWeights;
 }
 
@@ -197,7 +196,6 @@ export async function measureMidpointTiming(
   options: MidpointOptions,
 ): Promise<MidpointMeasurement> {
   const { size, neuralWeights } = options;
-  const frames = options.frames ?? SETTLED_FRAMES;
   const projection = projectionFor(size);
   const gbuffer = new GBuffer(device, size, projection);
   const generator = new FrameGenerator({ device });
@@ -207,8 +205,9 @@ export async function measureMidpointTiming(
   }
   generator.configure({ ...PROJECTION, renderWidth: size[0], renderHeight: size[1] });
 
-  let interpolated: GPUTexture | null = null;
-  for (let frame = 0; frame < frames; frame++) {
+  // Written by every frame but the first, and there are SETTLED_FRAMES of them.
+  let interpolated!: GPUTexture;
+  for (let frame = 0; frame < SETTLED_FRAMES; frame++) {
     gbuffer.renderFrame(markerAt(projection, size, frame));
     // Frame 0 has no predecessor to interpolate from.
     if (frame === 0) {
@@ -217,10 +216,6 @@ export async function measureMidpointTiming(
 
     generator.prepare(gbuffer.frameInputs());
     interpolated = generator.dispatch();
-  }
-
-  if (!interpolated) {
-    throw new Error(`midpoint timing needs at least two frames, got ${frames}`);
   }
 
   const previous = measureMarker(await readColor(device, gbuffer.previousColor), size);
@@ -234,12 +229,12 @@ export async function measureMidpointTiming(
 
   return {
     size,
-    frames,
+    frames: SETTLED_FRAMES,
     neural: Boolean(neuralWeights),
     pixelsPerRealFrame: markerGeometry(projection, size).pixelsPerFrame,
     expected: {
-      previous: markerPixelX(projection, size, frames - 2),
-      current: markerPixelX(projection, size, frames - 1),
+      previous: markerPixelX(projection, size, SETTLED_FRAMES - 2),
+      current: markerPixelX(projection, size, SETTLED_FRAMES - 1),
     },
     previous,
     current,

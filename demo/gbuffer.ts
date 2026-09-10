@@ -18,7 +18,7 @@ import { perspective, type Mat4, type Projection } from "./math.js";
 
 // Half floats are plenty for colour, and the interpolated frame the library
 // hands back is rgba16float too, so presentation reads one format.
-export const COLOR_FORMAT: GPUTextureFormat = "rgba16float";
+const COLOR_FORMAT: GPUTextureFormat = "rgba16float";
 // Depth travels as colour because the module samples it as texture_2d<f32>.
 // Full floats: device depth crowds towards 1 near the far plane, where f16
 // steps are coarse enough to make the disocclusion mask's view-space
@@ -142,10 +142,8 @@ function renderTarget(
 }
 
 export class GBuffer {
-  readonly size: readonly [number, number];
-  readonly projection: Projection;
-
   private readonly device: GPUDevice;
+  private readonly size: readonly [number, number];
   private readonly pipeline: GPURenderPipeline;
   private readonly camera: GPUBuffer;
   private readonly instances: GPUBuffer;
@@ -160,7 +158,6 @@ export class GBuffer {
   constructor(device: GPUDevice, size: readonly [number, number], projection: Projection) {
     this.device = device;
     this.size = size;
-    this.projection = projection;
 
     const module = device.createShaderModule({ label: "demo-gbuffer", code: SHADER });
     this.pipeline = device.createRenderPipeline({

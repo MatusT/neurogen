@@ -174,7 +174,7 @@ export function markerGeometry(
 }
 
 // The centre of the visible face, which is what the midpoint check measures.
-export function markerPosition(
+function markerPosition(
   geometry: MarkerGeometry,
   frame: number,
 ): readonly [number, number, number] {
