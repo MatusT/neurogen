@@ -4,6 +4,7 @@ import setupWgsl from "../src/wgsl/generated/frameinterpolation/setup.wgsl.js";
 import reconstructAndDilateWgsl from "../src/wgsl/generated/frameinterpolation/reconstruct_and_dilate.wgsl.js";
 import gameMotionVectorFieldWgsl from "../src/wgsl/generated/frameinterpolation/game_motion_vector_field.wgsl.js";
 import opticalFlowVectorFieldWgsl from "../src/wgsl/generated/frameinterpolation/optical_flow_vector_field.wgsl.js";
+import disocclusionMaskWgsl from "../src/wgsl/generated/frameinterpolation/disocclusion_mask.wgsl.js";
 
 // Mirrors FrameInterpolationParams in src/wgsl/frameinterpolation/params.wgsl.
 // Padded to 48 bytes; the struct itself is 40.
@@ -456,6 +457,89 @@ describe("frame interpolation", () => {
       const field = await runOpticalFlowVectorField(renderSize, () => [16, 0], () => 0);
 
       expect(Array.from(field).every((entry) => entry === 0)).toBe(true);
+    });
+  });
+
+  describe("disocclusion mask", () => {
+    // A stationary, valid, primary field entry — the only shape these fixtures
+    // need, so the half-float coefficients are both zero.
+    const STATIONARY_PRIMARY = (0x80000000 | (512 << 21) | (31 << 16)) >>> 0;
+
+    async function runDisocclusionMask(
+      renderSize: [number, number],
+      interpolatedDepthAt: (x: number, y: number) => number,
+      previousDepthAt: (x: number, y: number) => number,
+    ) {
+      const [width, height] = renderSize;
+      const pixels = width * height;
+
+      const interpolatedDepthData = new Float32Array(pixels);
+      const previousDepthData = new Float32Array(pixels);
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          interpolatedDepthData[y * width + x] = interpolatedDepthAt(x, y);
+          previousDepthData[y * width + x] = previousDepthAt(x, y);
+        }
+      }
+
+      const paramsBuffer = harness.createUniformBuffer(frameInterpolationParams({ renderSize }));
+      const depthInterpolated = harness.createStorageBuffer(interpolatedDepthData);
+      const depthPrevious = harness.createStorageBuffer(previousDepthData);
+      // The current frame's estimate is the dilated depth; keeping it equal to
+      // the interpolated depth isolates the previous-frame channel.
+      const dilatedDepth = harness.createStorageBuffer(interpolatedDepthData);
+      const gameField = harness.createStorageBuffer(
+        new Uint32Array(pixels * 2).fill(STATIONARY_PRIMARY),
+      );
+      const mask = harness.createStorageBuffer(new Float32Array(pixels * 2));
+
+      const pipeline = harness.createComputePipeline(disocclusionMaskWgsl);
+      await harness.dispatch(
+        pipeline,
+        [
+          { buffer: paramsBuffer },
+          { buffer: depthInterpolated },
+          { buffer: depthPrevious },
+          { buffer: dilatedDepth },
+          { buffer: gameField },
+          { buffer: mask },
+        ],
+        [groupCount(width), groupCount(height)],
+      );
+
+      return new Float32Array(await harness.readBuffer(mask, pixels * 8));
+    }
+
+    it("reports both frames visible where the depths agree", async () => {
+      const mask = await runDisocclusionMask([8, 4], () => 0.5, () => 0.5);
+
+      expect(Array.from(mask).every((component) => component === 1)).toBe(true);
+    });
+
+    it("marks a pixel hidden behind nearer geometry in the previous frame", async () => {
+      const renderSize: [number, number] = [8, 4];
+      // The right half of the previous frame held something much nearer, so the
+      // surface this pixel wants to sample was occluded there.
+      const mask = await runDisocclusionMask(renderSize, () => 0.5, (x) => (x < 4 ? 0.5 : 0.1));
+
+      for (let y = 0; y < 4; y++) {
+        for (let x = 0; x < 8; x++) {
+          expect(mask[(y * 8 + x) * 2]).toBe(x < 4 ? 1 : 0);
+          // The current-frame channel compares against an identical depth and
+          // must stay visible either way.
+          expect(mask[(y * 8 + x) * 2 + 1]).toBe(1);
+        }
+      }
+    });
+
+    it("treats a depth gap below the Ksep separation as the same surface", async () => {
+      const renderSize: [number, number] = [8, 4];
+      // 2e-5 of device depth is about 8e-6 of view-space depth here, under the
+      // ~2.2e-5 the Ksep threshold requires before two depths count as separate
+      // surfaces — so this must read as visible, not disoccluded.
+      const mask = await runDisocclusionMask(renderSize, () => 0.5, () => 0.5 - 2e-5);
+
+      expect(Array.from(mask).every((component) => component === 1)).toBe(true);
     });
   });
 });
