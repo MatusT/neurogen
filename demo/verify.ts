@@ -2,10 +2,11 @@
 // constant velocity, and the interpolated frame's copy of it measured against
 // the midpoint of the two real frames it was generated from.
 //
-// Nine things have to hold, and only together do they mean anything:
+// Ten things have to hold, and only together do they mean anything:
 //
 //   across    the bar's centroid sits halfway between the two real frames'
 //   shape     it is one bar, not two, and the same width
+//   whole     it is in one piece down the frame too
 //   down      it sits on the same row, at the same height
 //   mass      it carries the same red
 //   found     the box the run detection put it in is where it should be
@@ -111,12 +112,14 @@ export interface MarkerProfile {
   span: number;
   // How many separate bars those columns form. Two means a crossfade.
   bars: number;
-  // The same two figures down the other axis. A column profile alone says
-  // nothing about where the bar sits vertically or how much of its height
-  // survived, so a frame with the bar slid down or reduced to one row measures
-  // identically to a correct one.
+  // The same three figures down the other axis. A column profile alone says
+  // nothing about where the bar sits vertically, how much of its height
+  // survived, or whether it is in one piece — a frame with the bar slid down,
+  // reduced to one row, or broken into two stacked pieces measures identically
+  // to a correct one.
   rowCentroid: number;
   rowSpan: number;
+  rowBars: number;
   // Total red in the bar, unnormalised. `ghost` is a ratio and cannot see a
   // frame that is uniformly dimmer; this can.
   mass: number;
@@ -288,6 +291,7 @@ export function measureMarker(
     bars: across.bars,
     rowCentroid: centroid(barRows, bar.top),
     rowSpan: down.span,
+    rowBars: down.bars,
     mass,
     ghost: total > 0 ? (total - mass) / total : 0,
     bar,
@@ -358,6 +362,13 @@ export function midpointFailures(
       `${previous.centroid.toFixed(2)} and ${current.centroid.toFixed(2)}`,
   );
   report(interpolated.bars !== 1, `${interpolated.bars} bars, not one — a crossfade, not a warp`);
+  // The same claim down the other axis. The crop only ever holds the widest run,
+  // so a detached piece above or below the bar lands nowhere else: its mass is
+  // outside the box, and `ghost` is the only figure that moves.
+  report(
+    interpolated.rowBars !== 1,
+    `${interpolated.rowBars} pieces stacked down the frame, not one bar`,
+  );
 
   const width = mean(previous.span, current.span);
   report(
@@ -516,6 +527,7 @@ export function formatMeasurement(m: MidpointMeasurement): string {
     `bar row centre           ${px(m.previous.rowCentroid)} / ${m.interpolated.rowCentroid.toFixed(2)} / ${m.current.rowCentroid.toFixed(2)}   (the marker never moves vertically)`,
     `red in the bar           ${px(m.previous.mass)} / ${m.interpolated.mass.toFixed(2)} / ${m.current.mass.toFixed(2)}`,
     `separate bars            ${m.previous.bars} / ${m.interpolated.bars} / ${m.current.bars}      (2 in the middle would be a crossfade)`,
+    `stacked pieces           ${m.previous.rowBars} / ${m.interpolated.rowBars} / ${m.current.rowBars}      (2 would be a bar broken in half)`,
     `red outside the bar      ${(m.interpolated.ghost * 100).toFixed(1)}%      (the blend's trail behind a fast edge)`,
     `bar pixels vs real       ${(m.mismatch * 100).toFixed(2)}%      (structure no row or column sum can see)`,
     m.failures.length === 0

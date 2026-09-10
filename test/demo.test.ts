@@ -110,6 +110,8 @@ describe("marker measurement", () => {
     corrupt?: (x: number, y: number, red: number) => number;
     // Red laid down away from the bar, in columns it never occupies.
     decoy?: { row: number; height: number; red: number };
+    // A detached piece of bar, in the bar's own columns.
+    segment?: { row: number; height: number };
   }
 
   function frame(bar: Bar): Float32Array {
@@ -121,7 +123,13 @@ describe("marker measurement", () => {
 
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
-        const inside = x >= bar.left && x < bar.left + BAR.width && y >= top && y < top + tall;
+        const inColumns = x >= bar.left && x < bar.left + BAR.width;
+        const inside = inColumns && y >= top && y < top + tall;
+        const detached =
+          bar.segment !== undefined &&
+          inColumns &&
+          y >= bar.segment.row &&
+          y < bar.segment.row + bar.segment.height;
         const red = bar.corrupt && inside ? bar.corrupt(x - bar.left, y - top, flat) : flat;
         const decoyed =
           bar.decoy !== undefined &&
@@ -130,8 +138,8 @@ describe("marker measurement", () => {
           y >= bar.decoy.row &&
           y < bar.decoy.row + bar.decoy.height;
 
-        if (inside || decoyed) {
-          texels.set([inside ? red : bar.decoy!.red, 0, 0, 1], (y * width + x) * 4);
+        if (inside || detached || decoyed) {
+          texels.set([decoyed && !inside && !detached ? bar.decoy!.red : red, 0, 0, 1], (y * width + x) * 4);
           continue;
         }
 
@@ -169,7 +177,7 @@ describe("marker measurement", () => {
     const bar = profile({ left: 48 });
 
     expect([bar.centroid, bar.span, bar.bars, bar.ghost]).toEqual([52, 8, 1, 0]);
-    expect([bar.rowCentroid, bar.rowSpan]).toEqual([45, 50]);
+    expect([bar.rowCentroid, bar.rowSpan, bar.rowBars]).toEqual([45, 50, 1]);
   });
 
   it("reports the two bars a crossfade would leave", () => {
@@ -251,6 +259,19 @@ describe("marker measurement", () => {
     const failures = midpointFailures(previous(), current(), hidden);
     expect(failures.join(" ")).toMatch(/centred on row/);
     expect(failures.join(" ")).toMatch(/found on row/);
+  });
+
+  it("rejects a bar broken into pieces stacked down the frame", () => {
+    // Counting bars across the frame catches a crossfade, but says nothing
+    // about the other axis. A detached piece in the bar's own columns leaves
+    // the crop — which holds only the widest run — and every figure taken from
+    // it exactly as they were.
+    const broken = profile({ left: 48, segment: { row: 0, height: 15 } });
+
+    expect([broken.centroid, broken.span, broken.bars]).toEqual([52, 8, 1]);
+    expect([broken.rowCentroid, broken.rowSpan, broken.mass]).toEqual([45, 50, 400]);
+    expect(broken.rowBars).toBe(2);
+    expect(midpointFailures(previous(), current(), broken).join(" ")).toMatch(/pieces stacked/);
   });
 
   it("rejects a mistimed bar", () => {
