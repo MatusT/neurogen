@@ -573,6 +573,36 @@ describe("frame generator", () => {
     expect(() => generator.installNeuralBlendWeight(wrongShape)).toThrow(/layer shape/);
   });
 
+  it("keeps the working network when a replacement fails past the shape check", async () => {
+    // Same layer shape as the real asset (passes assertBlendWeightShape), but
+    // a truncated weights array — only packNeuralWeights catches this, deep
+    // inside building the replacement's GPU buffer. If the old network were
+    // destroyed before that point, this install would leave the generator
+    // dispatching against a freed buffer.
+    const truncated = {
+      name: "truncated",
+      layers: blendWeightAsset.layers.map((layer, index) =>
+        index === 0 ? { ...layer, weights: layer.weights.slice(0, 1) } : layer,
+      ),
+    };
+
+    const generator = new FrameGenerator({ device: harness.device });
+    await checked(harness, () => generator.configure({ ...PROJECTION, renderWidth: WIDTH, renderHeight: HEIGHT }));
+    await checked(harness, () => generator.installNeuralBlendWeight(blendWeightAsset));
+
+    expect(() => generator.installNeuralBlendWeight(truncated)).toThrow(/weights/);
+
+    const inputs = translationInputs();
+    await checked(harness, () => {
+      generator.prepare(inputs);
+      generator.dispatch();
+    });
+    const weight = new Float32Array(await harness.readBuffer(generator.blendWeight, PIXELS * 4));
+    expect(Math.max(...weight)).toBeGreaterThan(0);
+
+    generator.destroy();
+  });
+
   describe("call order", () => {
     it("refuses to run before configure()", () => {
       const generator = new FrameGenerator({ device: harness.device });

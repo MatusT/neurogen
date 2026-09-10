@@ -110,8 +110,11 @@ export class FrameGenerator {
   // reconfigure; may be called before or after configure().
   installNeuralBlendWeight(weights: NeuralNetworkWeights): void {
     assertBlendWeightShape(weights);
-    this.neuralWeights = weights;
+    // Only remember this asset for a future reconfigure once the stage has
+    // actually accepted it — otherwise a rejected replacement gets retried
+    // and rejected again on every subsequent configure().
     this.frameInterpolation?.installNeuralBlendWeight(weights);
+    this.neuralWeights = weights;
   }
 
   prepare(inputs: FrameGeneratorInputs): void {

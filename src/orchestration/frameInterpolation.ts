@@ -217,7 +217,10 @@ export class FrameInterpolationStage {
   // occlusion formula. Takes the parsed asset rather than a path: `tsc` does not
   // copy the JSON into `dist/`, so the consumer bundler-imports or fetches it.
   installNeuralBlendWeight(weights: NeuralNetworkWeights): void {
-    this.neuralWeights?.destroy();
+    // Build the replacement before touching the old one — neuralBlendWeightStep
+    // can still throw here (e.g. a weights array truncated relative to its own
+    // declared shape), and destroying the working buffer first would leave the
+    // retained dispatch step bound to freed GPU state with no way back.
     const { step: neural, weightBuffer } = neuralBlendWeightStep(this.device, weights, {
       params: this.params[0],
       disocclusionMask: this.buffers.disocclusionMask,
@@ -225,6 +228,7 @@ export class FrameInterpolationStage {
       blendWeight: this.buffers.blendWeight,
       groups: this.frameGroups(),
     });
+    this.neuralWeights?.destroy();
     this.neuralWeights = weightBuffer;
     this.neural = neural;
   }
