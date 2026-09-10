@@ -13,9 +13,16 @@
 //
 // The luma of *both* input frames is recomputed every frame rather than the
 // previous frame's being carried over. `prepare()` is handed both colour
-// textures, so recomputing makes the stage a function of its inputs plus the
-// scene-change history alone, with no assumption that consecutive calls form a
-// sequence. Cost is two extra dispatches out of the fourteen here.
+// textures, so recomputing removes the need to track which texture was last
+// frame's. Cost is two extra dispatches out of the fourteen here.
+//
+// The stage is still not stateless across frames. `scdPreviousHistogram` is
+// this frame's histogram waiting to be compared against the next, which is the
+// whole basis of scene-change detection; and at render widths that are not a
+// multiple of 16 the level-1 search's dispatch falls a cell short of the
+// ceil-halved flow grid, so those cells keep the previous frame's vector. Task
+// 2 documented the second as benign — it feeds the median filter as one more
+// tap, and level >= 1 validity is never read downstream.
 
 import prepareLumaWgsl from "../wgsl/generated/opticalflow/prepare_luma.wgsl.js";
 import luminancePyramidWgsl from "../wgsl/generated/opticalflow/luminance_pyramid.wgsl.js";
@@ -42,6 +49,7 @@ import {
   type ComputeStep,
   encodeSteps,
   pipeline,
+  step,
   storageBuffer,
   UNREFERENCED,
   uniformBuffer,
@@ -138,11 +146,11 @@ export class OpticalFlowStage {
     const filter = pipeline(device, filterOpticalFlowWgsl, "of-filter");
     const scale = pipeline(device, scaleOpticalFlowWgsl, "of-scale");
 
-    const step = (
+    const encode = (
       target: GPUComputePipeline,
       resources: readonly (GPUBindingResource | undefined)[],
       groups: readonly [number, number, number],
-    ): ComputeStep => ({ pipeline: target, bindGroup: bindGroup(device, target, resources), groups });
+    ): ComputeStep => step(device, target, resources, groups);
 
     const steps: ComputeStep[] = [];
 
@@ -155,18 +163,18 @@ export class OpticalFlowStage {
       ] as const;
       for (const luma of [this.lumaCurrent, this.lumaPrevious]) {
         steps.push(
-          step(pyramid, [buf(this.params[level]), buf(luma[level - 1]), buf(luma[level])], groups),
+          encode(pyramid, [buf(this.params[level]), buf(luma[level - 1]), buf(luma[level])], groups),
         );
       }
     }
 
     steps.push(
-      step(
+      encode(
         histogram,
         [buf(this.params[FINEST_LEVEL]), buf(this.lumaCurrent[FINEST_LEVEL]), buf(scdHistogram)],
         scdHistogramGroups(renderSize),
       ),
-      step(
+      encode(
         divergence,
         [
           UNREFERENCED,
@@ -177,7 +185,7 @@ export class OpticalFlowStage {
         ],
         [SCD_HISTOGRAM_COUNT, SCD_SHIFT_COUNT, 1],
       ),
-      step(
+      encode(
         finalize,
         [
           buf(this.params[FINEST_LEVEL]),
@@ -197,7 +205,7 @@ export class OpticalFlowStage {
       const [flowWidth, flowHeight] = flowLevelSize(renderSize, level);
 
       steps.push(
-        step(
+        encode(
           search,
           [
             params,
@@ -215,7 +223,7 @@ export class OpticalFlowStage {
             1,
           ],
         ),
-        step(
+        encode(
           filter,
           [
             params,
@@ -238,7 +246,7 @@ export class OpticalFlowStage {
       // the source level, which is what the pass's header specifies.
       const [destWidth, destHeight] = flowLevelSize(renderSize, level - 1);
       steps.push(
-        step(
+        encode(
           scale,
           [
             params,

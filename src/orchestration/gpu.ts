@@ -69,6 +69,15 @@ export interface ComputeStep {
   groups: readonly [number, number, number];
 }
 
+export function step(
+  device: GPUDevice,
+  target: GPUComputePipeline,
+  resources: readonly (GPUBindingResource | undefined)[],
+  groups: readonly [number, number, number],
+): ComputeStep {
+  return { pipeline: target, bindGroup: bindGroup(device, target, resources), groups };
+}
+
 export function encodeSteps(pass: GPUComputePassEncoder, steps: readonly ComputeStep[]): void {
   for (const step of steps) {
     pass.setPipeline(step.pipeline);

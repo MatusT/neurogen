@@ -33,11 +33,11 @@ import {
   type Size,
 } from "./geometry.js";
 import {
-  bindGroup,
   buf,
   type ComputeStep,
   encodeSteps,
   pipeline,
+  step,
   storageBuffer,
   uniformBuffer,
 } from "./gpu.js";
@@ -105,9 +105,14 @@ export class FrameInterpolationStage {
   private readonly pipelines: Record<string, GPUComputePipeline>;
   private readonly buffers: Record<string, GPUBuffer>;
   private readonly opticalFlow: OpticalFlowInputs;
-  // Buffer-only and therefore built once: everything downstream of the blend.
+  // Built once: every step whose bindings are all buffers this stage owns.
+  private readonly setupStep: ComputeStep;
+  private readonly disocclusionStep: ComputeStep;
   private readonly pyramidSteps: readonly ComputeStep[];
   private neural: ComputeStep | null = null;
+  // Tracked apart from `owned` so a second install can release the first
+  // network's weights rather than holding them until destroy().
+  private neuralWeights: GPUBuffer | null = null;
   private readonly owned: GPUBuffer[] = [];
 
   constructor(
@@ -165,11 +170,40 @@ export class FrameInterpolationStage {
     };
 
     const b = this.buffers;
+    const params = buf(this.params[0]);
+    const frameGroups = this.frameGroups();
+
+    this.setupStep = this.buildStep(
+      this.pipelines.setup,
+      [
+        params,
+        buf(b.gameField),
+        buf(b.opticalFlowField),
+        buf(b.depthPrevious),
+        buf(b.depthInterpolated),
+        buf(this.opticalFlow.sceneChange),
+        buf(b.state),
+      ],
+      frameGroups,
+    );
+    this.disocclusionStep = this.buildStep(
+      this.pipelines.disocclusionMask,
+      [
+        params,
+        buf(b.depthInterpolated),
+        buf(b.depthPrevious),
+        buf(b.dilatedDepth),
+        buf(b.gameField),
+        buf(b.disocclusionMask),
+      ],
+      frameGroups,
+    );
+
     const pyramidSteps: ComputeStep[] = [];
     for (let mip = 0; mip < INPAINTING_MIP_COUNT; mip++) {
       const [mipWidth, mipHeight] = pyramidMipSize(renderSize, mip);
       pyramidSteps.push(
-        this.step(
+        this.buildStep(
           this.pipelines.inpaintingPyramid,
           [buf(this.params[mip]), buf(b.preliminaryColor), buf(b.blendWeight), buf(b.inpaintingPyramid)],
           [groupCount(mipWidth, FRAME_WORKGROUP), groupCount(mipHeight, FRAME_WORKGROUP), 1],
@@ -183,15 +217,16 @@ export class FrameInterpolationStage {
   // occlusion formula. Takes the parsed asset rather than a path: `tsc` does not
   // copy the JSON into `dist/`, so the consumer bundler-imports or fetches it.
   installNeuralBlendWeight(weights: NeuralNetworkWeights): void {
-    const { step, weightBuffer } = neuralBlendWeightStep(this.device, weights, {
+    this.neuralWeights?.destroy();
+    const { step: neural, weightBuffer } = neuralBlendWeightStep(this.device, weights, {
       params: this.params[0],
       disocclusionMask: this.buffers.disocclusionMask,
       preliminaryColor: this.buffers.preliminaryColor,
       blendWeight: this.buffers.blendWeight,
       groups: this.frameGroups(),
     });
-    this.own(weightBuffer);
-    this.neural = step;
+    this.neuralWeights = weightBuffer;
+    this.neural = neural;
   }
 
   // Discarding history is required on the very first frame: there is no
@@ -208,23 +243,12 @@ export class FrameInterpolationStage {
     const groups = this.frameGroups();
     const [gridWidth, gridHeight] = opticalFlowGridSize(this.settings.renderSize);
 
-    // Rebuilt each frame because the caller owns the four input textures and may
-    // hand over different ones; the buffer-only steps are built once.
+    // Only the steps that bind one of the caller's four input textures are
+    // rebuilt: the caller may hand over a different set each call, so a bind
+    // group holding them cannot be cached. The rest were built at construction.
     const prepare: ComputeStep[] = [
-      this.step(
-        this.pipelines.setup,
-        [
-          params,
-          buf(b.gameField),
-          buf(b.opticalFlowField),
-          buf(b.depthPrevious),
-          buf(b.depthInterpolated),
-          buf(this.opticalFlow.sceneChange),
-          buf(b.state),
-        ],
-        groups,
-      ),
-      this.step(
+      this.setupStep,
+      this.buildStep(
         this.pipelines.reconstructAndDilate,
         [
           params,
@@ -236,7 +260,7 @@ export class FrameInterpolationStage {
         ],
         groups,
       ),
-      this.step(
+      this.buildStep(
         this.pipelines.gameMotionVectorField,
         [
           params,
@@ -249,7 +273,7 @@ export class FrameInterpolationStage {
         ],
         groups,
       ),
-      this.step(
+      this.buildStep(
         this.pipelines.opticalFlowVectorField,
         [
           params,
@@ -261,21 +285,10 @@ export class FrameInterpolationStage {
         ],
         [groupCount(gridWidth, FRAME_WORKGROUP), groupCount(gridHeight, FRAME_WORKGROUP), 1],
       ),
-      this.step(
-        this.pipelines.disocclusionMask,
-        [
-          params,
-          buf(b.depthInterpolated),
-          buf(b.depthPrevious),
-          buf(b.dilatedDepth),
-          buf(b.gameField),
-          buf(b.disocclusionMask),
-        ],
-        groups,
-      ),
+      this.disocclusionStep,
     ];
 
-    const preliminaryBlend = this.step(
+    const preliminaryBlend = this.buildStep(
       this.pipelines.preliminaryBlend,
       [
         params,
@@ -290,7 +303,7 @@ export class FrameInterpolationStage {
       ],
       groups,
     );
-    const finalBlend = this.step(
+    const finalBlend = this.buildStep(
       this.pipelines.finalBlend,
       [
         params,
@@ -325,20 +338,22 @@ export class FrameInterpolationStage {
       buffer.destroy();
     }
     this.owned.length = 0;
+    this.neuralWeights?.destroy();
+    this.neuralWeights = null;
+  }
+
+  private buildStep(
+    target: GPUComputePipeline,
+    resources: readonly (GPUBindingResource | undefined)[],
+    groups: readonly [number, number, number],
+  ): ComputeStep {
+    return step(this.device, target, resources, groups);
   }
 
   private frameGroups(): readonly [number, number, number] {
     const [width, height] = this.settings.renderSize;
 
     return [groupCount(width, FRAME_WORKGROUP), groupCount(height, FRAME_WORKGROUP), 1];
-  }
-
-  private step(
-    target: GPUComputePipeline,
-    resources: readonly (GPUBindingResource | undefined)[],
-    groups: readonly [number, number, number],
-  ): ComputeStep {
-    return { pipeline: target, bindGroup: bindGroup(this.device, target, resources), groups };
   }
 
   private packParams(inpaintingMipLevel: number, reset: History): Uint8Array<ArrayBuffer> {

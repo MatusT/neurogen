@@ -68,7 +68,7 @@ export function pyramidTexelCount(renderSize: Size): number {
 // bounds of the three passes that consume it.
 //
 
-export const SCD_HISTOGRAM_BINS = 256;
+const SCD_HISTOGRAM_BINS = 256;
 const SCD_HISTOGRAMS_PER_DIM = 3;
 export const SCD_HISTOGRAM_COUNT = SCD_HISTOGRAMS_PER_DIM * SCD_HISTOGRAMS_PER_DIM;
 export const SCD_SHIFT_COUNT = 3;
