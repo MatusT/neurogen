@@ -13,6 +13,7 @@
 
 // @import ./params.wgsl
 // @import ../core/math.wgsl
+// @import ../core/pack.wgsl
 
 fn fiInBounds(pos: vec2<i32>, size: vec2<i32>) -> bool {
     return all(pos >= vec2<i32>(0)) && all(pos < size);
@@ -194,8 +195,8 @@ fn fiPackVectorField(kind: u32, highPriority: u32, lowPriority: u32, motionVecto
         | ((lowPriority & MV_FIELD_PRIORITY_LOW_MAX) << MV_FIELD_PRIORITY_LOW_OFFSET);
 
     return vec2<u32>(
-        priority | (pack2x16float(vec2<f32>(motionVector.x, 0.0)) & MV_FIELD_COEFFICIENT_MASK),
-        priority | (pack2x16float(vec2<f32>(motionVector.y, 0.0)) & MV_FIELD_COEFFICIENT_MASK),
+        priority | (ffxF32ToF16(motionVector.x) & MV_FIELD_COEFFICIENT_MASK),
+        priority | (ffxF32ToF16(motionVector.y) & MV_FIELD_COEFFICIENT_MASK),
     );
 }
 

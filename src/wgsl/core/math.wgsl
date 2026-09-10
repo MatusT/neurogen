@@ -2,9 +2,13 @@
 //
 // Most ffx_core scalar/vector helpers (ffxMin, ffxMax, ffxPow, ffxSaturate,
 // ffxLerp, ffxRound, ffxFract, ffxBroadcastN) map 1:1 onto native WGSL
-// builtins with identical semantics — call these directly instead, no
-// wrapper is defined here (WGSL has no user-level overloading, so a
-// per-type wrapper would just be a same-arity alias for the builtin):
+// builtins for every finite input this port's callers pass them — call these
+// directly instead, no wrapper is defined here (WGSL has no user-level
+// overloading, so a per-type wrapper would just be a same-arity alias for
+// the builtin). Not a universal equivalence: HLSL and WGSL diverge on NaN
+// (HLSL's saturate/min/max favor the numeric operand, WGSL's don't guarantee
+// that) and on signed-zero handling — irrelevant here since none of these
+// callers can produce a NaN or signed-zero operand from valid render input.
 //
 //   ffxMin/ffxMax     -> min(x, y) / max(x, y)
 //   ffxPow            -> pow(x, y)
@@ -37,8 +41,10 @@ const SRGB_B: f32 = 0.055 / 1.055;
 
 // HLSL source picks the piecewise branch via a sign-bit multiply trick
 // (ffxZeroOneSelect + ffxZeroOneIsSigned) to stay branchless on GCN/RDNA.
-// WGSL's select() is already a branchless select instruction, so it's used
-// directly instead of porting those two helpers.
+// WGSL's select() already specifies both operands as evaluated regardless of
+// the condition, giving the same branchless guarantee at the language level
+// (actual codegen is a backend choice, not something WGSL specifies), so
+// it's used directly instead of porting those two helpers.
 fn ffxLinearFromSrgb(value: vec3<f32>) -> vec3<f32> {
     return select(
         pow(value * SRGB_A + SRGB_B, vec3<f32>(SRGB_GAMMA)),

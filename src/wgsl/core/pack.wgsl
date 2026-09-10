@@ -11,7 +11,11 @@
 // of its binary16 representation, packed into the low 16 bits of a u32 with
 // the high 16 bits zero. WGSL has no scalar equivalent — pack2x16float packs
 // two f32 values at once — so the second lane is padded with 0.0, whose
-// binary16 encoding is 0x0000, matching f32tof16's zeroed high bits.
+// binary16 encoding is 0x0000, matching f32tof16's zeroed high bits. This
+// only matches f32tof16 bit-for-bit within binary16's finite range
+// (|x| <= 65504); WGSL doesn't guarantee identical rounding or subnormal
+// handling for out-of-range inputs. Fine for this port's callers, which pack
+// small pixel-scale values, not arbitrary floats.
 fn ffxF32ToF16(x: f32) -> u32 {
     return pack2x16float(vec2<f32>(x, 0.0));
 }
