@@ -1,7 +1,8 @@
 # Third-party notices
 
-`src/wgsl/opticalflow/` and `src/wgsl/frameinterpolation/` are WGSL ports of
-algorithms from AMD's FidelityFX SDK (FSR3 frame interpolation), MIT licensed:
+`src/wgsl/core/`, `src/wgsl/opticalflow/`, and `src/wgsl/frameinterpolation/`
+are WGSL ports of algorithms from AMD's FidelityFX SDK (FSR3 frame
+interpolation), MIT licensed:
 
 ```
 Copyright (C) 2026 Advanced Micro Devices, Inc.
@@ -26,7 +27,8 @@ THE SOFTWARE.
 ```
 
 Source: https://github.com/GPUOpen-Effects/FidelityFX-SDK,
-`Kits/FidelityFX/framegeneration/fsr3/include/gpu/{opticalflow,frameinterpolation}`.
+`Kits/FidelityFX/api/internal/gpu/ffx_core_{hlsl,gpu_common}.h` (core helpers)
+and `Kits/FidelityFX/framegeneration/fsr3/include/gpu/{opticalflow,frameinterpolation}`.
 
-`src/wgsl/core/`, `src/wgsl/neural/`, and the TypeScript orchestration layer
-are original work, not derived from AMD source.
+`src/wgsl/neural/` and the TypeScript orchestration layer are original work,
+not derived from AMD source.
