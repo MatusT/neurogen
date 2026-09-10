@@ -12,8 +12,11 @@
 // That has the same centroid as the correct answer — the position test alone
 // cannot tell the two apart, which is why the shape test is not decoration.
 
-import { FrameGenerator } from "../src/orchestration/FrameGenerator.js";
-import type { NeuralNetworkWeights } from "../src/wgsl/neural/weights.js";
+import {
+  FrameGenerator,
+  INTERPOLATED_TEXTURE_FORMAT,
+  type NeuralNetworkWeights,
+} from "../src/index.js";
 import { GBuffer } from "./gbuffer.js";
 import { markerAt, markerGeometry, markerPixelX, PROJECTION, projectionFor } from "./scene.js";
 
@@ -47,6 +50,17 @@ function decodeHalf(bits: number): number {
 
 async function readColor(device: GPUDevice, texture: GPUTexture): Promise<Float32Array> {
   const { width, height } = texture;
+  // decodeHalf and BYTES_PER_HALF4 only describe this one format. The demo's
+  // own colour targets are in it deliberately, so one decoder serves both them
+  // and the frame the library hands back — which means a change to the
+  // library's output format has to fail here rather than quietly decode the
+  // bytes as something they are not.
+  if (texture.format !== INTERPOLATED_TEXTURE_FORMAT) {
+    throw new Error(
+      `readColor decodes ${INTERPOLATED_TEXTURE_FORMAT}, got a ${texture.format} texture`,
+    );
+  }
+
   const paddedRowBytes =
     Math.ceil((width * BYTES_PER_HALF4) / COPY_ROW_ALIGNMENT) * COPY_ROW_ALIGNMENT;
   const readback = device.createBuffer({
@@ -143,9 +157,12 @@ export function measureMarker(
     from: 0,
     to: -1,
   });
-  // One column either side: an edge the bar covers only partly falls below the
-  // half-peak threshold but is still the bar, and dropping it would bias the
-  // centroid towards whichever end happened to land on a pixel boundary.
+  // One column either side. The marker is a thin box seen from off-centre, so
+  // the camera catches a dim sliver of its side face in the column just beyond
+  // the bar: below the half-peak threshold, but still the marker. Including it
+  // is what makes the measured position agree with the scene's own transforms
+  // rather than sit a fifth of a pixel out, and the same rule runs over all
+  // three frames.
   const from = Math.max(0, bar.from - 1);
   const to = Math.min(width - 1, bar.to + 1);
 

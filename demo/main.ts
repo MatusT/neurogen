@@ -10,7 +10,10 @@
 // whole comparison — and why frame generation costs a frame of latency, since
 // the frame between n-1 and n cannot exist before n has been rendered.
 
-import { FrameGenerator } from "../src/orchestration/FrameGenerator.js";
+import { FrameGenerator } from "../src/index.js";
+// The one thing that is not behind the entry point: `tsc` does not copy the
+// weight asset into `dist/`, so the library documents it as a file a consumer
+// bundler-imports or fetches.
 import blendWeightAsset from "../src/wgsl/neural/weights/blend_weight_mlp.json";
 import { GBuffer } from "./gbuffer.js";
 import { Presenter } from "./present.js";
