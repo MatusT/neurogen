@@ -86,7 +86,7 @@ fn writeSecondaryVectors(interpolatedUv: vec2<f32>, motionVector: vec2<f32>, hal
         // vector is heading off screen, where it can never be read.
         let towardsCentre = normalize(vec2<f32>(0.5) - secondaryUv);
         let lowPriority = u32(max(0.0, dot(towardsCentre, stepDirection)) * f32(MV_FIELD_PRIORITY_LOW_MAX));
-        let packed = fiPackVectorField(false, highPriority, lowPriority, halfMotionVector);
+        let packed = fiPackVectorField(MV_FIELD_SECONDARY, highPriority, lowPriority, halfMotionVector);
 
         // Only the first bilinear tap: a secondary vector is a hint, and
         // spreading it over the full quad would let it outvote real vectors.
@@ -131,7 +131,7 @@ fn main(@builtin(global_invocation_id) globalId: vec3<u32>) {
 
     let highPriority = priorityFromViewSpaceDepth(fiViewSpaceDepth(depth));
     let lowPriority = colorAgreementPriority(uv, motionVector);
-    let packedPrimary = fiPackVectorField(true, highPriority, lowPriority, halfMotionVector);
+    let packedPrimary = fiPackVectorField(MV_FIELD_PRIMARY, highPriority, lowPriority, halfMotionVector);
 
     let bilinear = fiBilinear(interpolatedUv, params.renderSize);
     for (var i = 0; i < 4; i++) {

@@ -128,7 +128,7 @@ fn main(@builtin(global_invocation_id) globalId: vec3<u32>) {
         * u32(fiIsUvInside(reprojectedUv));
 
     let halfMotionVector = motionVector * 0.5;
-    let packed = fiPackVectorField(true, highPriority, lowPriority, halfMotionVector);
+    let packed = fiPackVectorField(MV_FIELD_PRIMARY, highPriority, lowPriority, halfMotionVector);
 
     let bilinear = fiBilinear(uv + halfMotionVector, gridSize);
     for (var i = 0; i < 4; i++) {

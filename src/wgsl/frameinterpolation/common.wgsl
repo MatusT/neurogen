@@ -153,6 +153,13 @@ const MV_FIELD_PRIORITY_LOW_MAX: u32 = 31u;
 const MV_FIELD_PRIORITY_HIGH_MAX: u32 = 1023u;
 const MV_FIELD_COEFFICIENT_MASK: u32 = 0xffffu;
 
+// Which kind of vector an entry carries. Primary entries are a pixel's own
+// motion; secondary ones are the trail behind it, stored with their depth
+// priority reversed so the atomic max keeps the furthest rather than the
+// nearest. WGSL has no enum type, so these are the named alternatives.
+const MV_FIELD_SECONDARY: u32 = 0u;
+const MV_FIELD_PRIMARY: u32 = 1u;
+
 struct FiVectorFieldEntry {
     motionVector: vec2<f32>,
     highPriorityFactor: f32,
@@ -181,8 +188,8 @@ fn fiPackedEntryIsPrimary(packed: u32) -> bool {
     return (packed & MV_FIELD_PRIMARY_BIT) != 0u;
 }
 
-fn fiPackVectorField(isPrimary: bool, highPriority: u32, lowPriority: u32, motionVector: vec2<f32>) -> vec2<u32> {
-    let priority = select(0u, MV_FIELD_PRIMARY_BIT, isPrimary)
+fn fiPackVectorField(kind: u32, highPriority: u32, lowPriority: u32, motionVector: vec2<f32>) -> vec2<u32> {
+    let priority = (kind * MV_FIELD_PRIMARY_BIT)
         | ((highPriority & MV_FIELD_PRIORITY_HIGH_MAX) << MV_FIELD_PRIORITY_HIGH_OFFSET)
         | ((lowPriority & MV_FIELD_PRIORITY_LOW_MAX) << MV_FIELD_PRIORITY_LOW_OFFSET);
 
@@ -287,4 +294,11 @@ fn fiPyramidMipOffset(level: i32) -> u32 {
         offset += u32(size.x * size.y);
     }
     return offset;
+}
+
+// The mip this dispatch writes. Clamped rather than trusted: orchestration
+// chooses the level, and one past the end of the table would address memory
+// belonging to no mip and silently produce wrong pixels rather than fail.
+fn fiInpaintingMipLevel() -> i32 {
+    return min(i32(params.inpaintingMipLevel), FI_INPAINTING_MIP_COUNT - 1);
 }

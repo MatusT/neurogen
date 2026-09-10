@@ -81,7 +81,10 @@ fn main(@builtin(global_invocation_id) globalId: vec3<u32>) {
     }
 
     var color = preliminaryColor[index].rgb;
-    let weight = blendWeight[index];
+    // Clamped to the range the contract declares rather than trusted: a
+    // replacement writer producing 1.0001 would extrapolate past the inpainted
+    // colour here instead of blending towards it.
+    let weight = saturate(blendWeight[index]);
 
     if (weight > FI_EPSILON) {
         let inpainted = computeInpainting(pos);

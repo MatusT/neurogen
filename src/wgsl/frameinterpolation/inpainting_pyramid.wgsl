@@ -55,7 +55,7 @@ fn reduceQuad(v0: vec4<f32>, v1: vec4<f32>, v2: vec4<f32>, v3: vec4<f32>) -> vec
 @compute @workgroup_size(8, 8)
 fn main(@builtin(global_invocation_id) globalId: vec3<u32>) {
     let pos = vec2<i32>(globalId.xy);
-    let level = i32(params.inpaintingMipLevel);
+    let level = fiInpaintingMipLevel();
     let mipSize = fiPyramidMipSize(level);
     if (!fiInBounds(pos, mipSize)) { return; }
 
