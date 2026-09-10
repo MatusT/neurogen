@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import {
+  blendWeightFeatures,
   classicalBlendWeight,
   evaluateNetwork,
   mulberry32,
@@ -7,8 +8,10 @@ import {
   targetBlendWeight,
   FEATURE_COUNT,
 } from "./neural-reference.js";
+import { createGpuHarness, type GpuHarness } from "./gpu-harness.js";
 import { packNeuralWeights, type NeuralNetworkWeights } from "../src/wgsl/neural/weights.js";
 import blendWeightMlp from "../src/wgsl/neural/weights/blend_weight_mlp.json";
+import blendWeightMlpWgsl from "../src/wgsl/generated/neural/blend_weight_mlp.wgsl.js";
 
 // Neither the training run's seed nor the seed its own held-out report uses, so
 // these samples are unseen by both.
@@ -30,8 +33,8 @@ function meanSquaredError(predict: (features: number[]) => number): number {
 
 describe("neural reference", () => {
   // Hand-computed so the reference is pinned to an arithmetic result rather
-  // than to itself: relu(-1) clamps to 0, which is what makes the second
-  // layer's output 2 rather than 1, and sigmoid(2) is the final answer.
+  // than to itself: the second hidden unit is -1 before its relu, so clamping
+  // it makes the output layer 2 rather than -1, and sigmoid(2) is the answer.
   it("applies relu to hidden layers and sigmoid to the output", () => {
     const network: NeuralNetworkWeights = {
       name: "hand",
@@ -115,5 +118,99 @@ describe("trained blend weight network", () => {
 
     expect(trained).toBeLessThan(1e-3);
     expect(trained * 4).toBeLessThan(Math.min(classical, zero, constantMean));
+  });
+});
+
+// Deliberately not a multiple of the 8x8 workgroup, so the last workgroup runs
+// invocations past the edge of the image.
+const RENDER_SIZE: [number, number] = [13, 5];
+const PIXEL_COUNT = RENDER_SIZE[0] * RENDER_SIZE[1];
+// Floats past the image, pre-filled with a value the sigmoid cannot produce.
+const GUARD_FLOATS = 8;
+const GUARD_VALUE = -1;
+const AGREEMENT_TOLERANCE = 1e-3;
+// FrameInterpolationParams padded, per test/frameinterpolation.test.ts.
+const FRAME_INTERPOLATION_PARAMS_BYTES = 48;
+
+// Cycles the four combinations of the binarised mask.
+function fixtureMask(index: number): number[] {
+  return [index % 2, Math.floor(index / 2) % 2];
+}
+
+// Spans 0..1.33 so some pixels drive the kernel's saturate, and keeps the
+// channels unequal so a wrong luma coefficient cannot cancel out.
+function fixtureColor(index: number): number[] {
+  const level = ((index * 7) % 17) / 12;
+  return [level, 1 - level * 0.5, level * 0.25, 1];
+}
+
+describe("blend weight kernel on the GPU", () => {
+  let harness: GpuHarness;
+  let gpuWeights: Float32Array;
+
+  beforeAll(async () => {
+    harness = await createGpuHarness();
+
+    const mask = new Float32Array(PIXEL_COUNT * 2);
+    const color = new Float32Array(PIXEL_COUNT * 4);
+    for (let i = 0; i < PIXEL_COUNT; i++) {
+      mask.set(fixtureMask(i), i * 2);
+      color.set(fixtureColor(i), i * 4);
+    }
+
+    const output = new Float32Array(PIXEL_COUNT + GUARD_FLOATS).fill(GUARD_VALUE);
+    const outputBuffer = harness.createStorageBuffer(output);
+
+    // Sized as the frame-interpolation params buffer rather than as this pass's
+    // own 8-byte struct, because that is what orchestration will bind: the
+    // kernel's uniform is a byte-compatible prefix of it, and this dispatch is
+    // what makes that claim testable rather than asserted.
+    const params = new Int32Array(FRAME_INTERPOLATION_PARAMS_BYTES / 4);
+    params.set(RENDER_SIZE);
+
+    await harness.dispatch(
+      harness.createComputePipeline(blendWeightMlpWgsl),
+      [
+        { buffer: harness.createUniformBuffer(params) },
+        { buffer: harness.createStorageBuffer(packNeuralWeights(trainedNetwork)) },
+        { buffer: harness.createStorageBuffer(mask) },
+        { buffer: harness.createStorageBuffer(color) },
+        { buffer: outputBuffer },
+      ],
+      [Math.ceil(RENDER_SIZE[0] / 8), Math.ceil(RENDER_SIZE[1] / 8)],
+    );
+
+    gpuWeights = new Float32Array(await harness.readBuffer(outputBuffer, output.byteLength));
+  });
+
+  function referenceWeight(index: number): number {
+    return evaluateNetwork(trainedNetwork, blendWeightFeatures(fixtureMask(index), fixtureColor(index)));
+  }
+
+  // The test that proves the port, rather than proving it compiles: the same
+  // features through the CPU reference and through the kernel.
+  it("agrees with the CPU reference", () => {
+    let worstDifference = 0;
+    for (let i = 0; i < PIXEL_COUNT; i++) {
+      worstDifference = Math.max(worstDifference, Math.abs(gpuWeights[i] - referenceWeight(i)));
+    }
+
+    expect(worstDifference).toBeLessThan(AGREEMENT_TOLERANCE);
+  });
+
+  it("leaves the floats past the image untouched", () => {
+    expect([...gpuWeights.slice(PIXEL_COUNT)]).toEqual(new Array(GUARD_FLOATS).fill(GUARD_VALUE));
+  });
+
+  // What the extension point is for: on the GPU, with the trained weights, the
+  // buffer downstream reads is not the one the classical pass would have left.
+  it("writes a weight the classical formula would not have", () => {
+    let worstDifference = 0;
+    for (let i = 0; i < PIXEL_COUNT; i++) {
+      const classical = classicalBlendWeight(blendWeightFeatures(fixtureMask(i), fixtureColor(i)));
+      worstDifference = Math.max(worstDifference, Math.abs(gpuWeights[i] - classical));
+    }
+
+    expect(worstDifference).toBeGreaterThan(0.3);
   });
 });

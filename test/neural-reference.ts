@@ -94,6 +94,16 @@ export function targetBlendWeight(features: readonly number[]): number {
   return Math.min(1, neitherSees + SINGLE_SOURCE_MAX_WEIGHT * oneSees * brightness);
 }
 
+// Mirrors `loadFeatures` in src/wgsl/neural/blend_weight_mlp.wgsl: the kernel
+// assembles its own features on the GPU, so the agreement test needs this half
+// of the port to compare against.
+const REC709_LUMA = [0.2126, 0.7152, 0.0722];
+
+export function blendWeightFeatures(mask: readonly number[], color: readonly number[]): number[] {
+  const luma = REC709_LUMA.reduce((sum, coefficient, i) => sum + coefficient * color[i], 0);
+  return [mask[0], mask[1], Math.min(1, Math.max(0, luma))];
+}
+
 // FI_EPSILON from src/wgsl/frameinterpolation/params.wgsl.
 const FI_EPSILON = 1e-3;
 
