@@ -52,7 +52,6 @@ var<workgroup> blockPixels: array<array<u32, COMPARE_WORDS>, COMPARE_SIZE>;
 var<workgroup> searchWindow: array<u32, SEARCH_WIDTH * SEARCH_HEIGHT>;
 var<workgroup> minScratch: array<u32, THREAD_COUNT>;
 var<workgroup> sumScratch: array<u32, THREAD_COUNT>;
-var<workgroup> sceneChanged: u32;
 
 // Both reductions leave a trailing barrier so the scratch can be reused by the
 // next cell without a caller-side barrier.
@@ -172,11 +171,7 @@ fn main(@builtin(workgroup_id) groupIdIn: vec3<u32>, @builtin(local_invocation_i
     let mapping = mapThreads(groupId, localIndex);
     let flowSize = ofFlowLevelSize(params.pyramidLevel);
 
-    // A storage load is not workgroup-uniform, and the barriers further down
-    // must stay in uniform control flow, so the flag is republished through
-    // workgroupUniformLoad before anything branches on it.
-    if (localIndex == 0u) { sceneChanged = sceneChange.detected; }
-    if (workgroupUniformLoad(&sceneChanged) != 0u) {
+    if (ofUniformFlag(localIndex, sceneChange.detected)) {
         // Exactly the four invocations that map one-to-one onto the cells.
         // Nothing was matched, so the zero vector is a reset, not motion.
         if ((mapping.searchId.y & 7) == 0 && (mapping.searchId.x & 1) == 0) {
@@ -196,11 +191,12 @@ fn main(@builtin(workgroup_id) groupIdIn: vec3<u32>, @builtin(local_invocation_i
         for (var cellX = 0; cellX < BLOCK_COUNT; cellX++) {
             let cell = vec2<i32>(cellX, cellY);
             let cellPos = cellOrigin + cell;
+            let cellLocalId = cellY * BLOCK_COUNT + cellX;
 
             var prediction = loadFlow(cellPos, flowSize);
             if (!usePrediction) { prediction = vec2<i32>(0); }
 
-            if (mapping.cellId == cellY * BLOCK_COUNT + cellX) {
+            if (mapping.cellId == cellLocalId) {
                 blockPixels[mapping.searchId.y & 7][mapping.searchId.x & 1] = packedLuma;
             }
 
@@ -225,7 +221,7 @@ fn main(@builtin(workgroup_id) groupIdIn: vec3<u32>, @builtin(local_invocation_i
             // matches where it sits at least as well as anywhere in the window
             // is held still rather than dragged onto a false match. The
             // stationary residual is then what validity has to judge.
-            let cellStillSad = reduceSum(localIndex, select(0u, stillSad, mapping.cellId == cellY * BLOCK_COUNT + cellX));
+            let cellStillSad = reduceSum(localIndex, select(0u, stillSad, mapping.cellId == cellLocalId));
             if (params.pyramidLevel == 0u && cellStillSad <= matchSad) {
                 motionVector = vec2<i32>(0);
                 matchSad = cellStillSad;

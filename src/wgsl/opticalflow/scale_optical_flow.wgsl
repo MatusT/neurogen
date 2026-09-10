@@ -30,8 +30,6 @@ const COMPARE_WIDTH: i32 = 4;
 var<workgroup> candidateVectors: array<array<array<vec2<i32>, 4>, 4>, CANDIDATE_COUNT>;
 var<workgroup> candidateLuma: array<array<array<u32, 4>, 4>, COMPARE_ROWS>;
 var<workgroup> candidateSads: array<array<array<u32, 4>, 4>, CANDIDATE_COUNT>;
-var<workgroup> sceneChanged: u32;
-
 fn storeFlow(pos: vec2<i32>, motionVector: vec2<i32>, size: vec2<i32>) {
     if (!ofInBounds(pos, size)) { return; }
 
@@ -46,10 +44,7 @@ fn main(@builtin(global_invocation_id) globalIdIn: vec3<u32>,
     let localId = vec3<i32>(localIdIn);
     let dstSize = ofFlowLevelSize(params.pyramidLevel - 1u);
 
-    // Republished through workgroup memory so the barriers below stay in
-    // uniform control flow.
-    if (localIndex == 0u) { sceneChanged = sceneChange.detected; }
-    if (workgroupUniformLoad(&sceneChanged) != 0u) {
+    if (ofUniformFlag(localIndex, sceneChange.detected)) {
         if (localId.z == 0) {
             storeFlow(globalId.xy, vec2<i32>(0), dstSize);
         }

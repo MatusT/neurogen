@@ -15,6 +15,16 @@ fn ofFlatIndex(pos: vec2<i32>, size: vec2<i32>) -> u32 {
     return u32(pos.y * size.x + pos.x);
 }
 
+var<workgroup> ofUniformFlagScratch: u32;
+
+// A storage load is not workgroup-uniform, and barriers must stay in uniform
+// control flow, so a value driving one (e.g. sceneChange.detected) has to be
+// republished through workgroup memory before anything branches on it.
+fn ofUniformFlag(localIndex: u32, value: u32) -> bool {
+    if (localIndex == 0u) { ofUniformFlagScratch = value; }
+    return workgroupUniformLoad(&ofUniformFlagScratch) != 0u;
+}
+
 // Packs four horizontally adjacent lumas into one u32, byte 0 leftmost. When
 // the 4-wide window straddles a screen edge the caller has already clamped it
 // back inside, so the samples are rotated and the outermost in-screen luma is
@@ -24,7 +34,7 @@ fn ofPackLuma(width: i32, x: i32, luma0: u32, luma1: u32, luma2: u32, luma3: u32
 
     if (x < 0) {
         let filler = packed & 0xffu;
-        if (x <= -1) { packed = (packed << 8u) | filler; }
+        packed = (packed << 8u) | filler;
         if (x <= -2) { packed = (packed << 8u) | filler; }
         if (x <= -3) { packed = (packed << 8u) | filler; }
         return packed;
@@ -32,7 +42,7 @@ fn ofPackLuma(width: i32, x: i32, luma0: u32, luma1: u32, luma2: u32, luma3: u32
 
     if (x > width - 4) {
         let filler = packed & 0xff000000u;
-        if (x >= width - 3) { packed = (packed >> 8u) | filler; }
+        packed = (packed >> 8u) | filler;
         if (x >= width - 2) { packed = (packed >> 8u) | filler; }
         if (x >= width - 1) { packed = (packed >> 8u) | filler; }
     }

@@ -12,6 +12,20 @@ const VALIDATE_DIR = resolve(".wgsl-build");
 const IMPORT_RE = /^\/\/\s*@import\s+(.+)$/;
 const ENTRY_RE = /@(compute|vertex|fragment)\b/;
 
+// Files this small don't need caching for its own sake, but a file imported
+// by several entry points (e.g. core/math.wgsl) otherwise gets read once for
+// the entry-point check and again per importing entry, both here and in
+// compose() below.
+const fileCache = new Map();
+function readFileCached(path) {
+  let text = fileCache.get(path);
+  if (text === undefined) {
+    text = readFileSync(path, "utf8");
+    fileCache.set(path, text);
+  }
+  return text;
+}
+
 function listWgslFiles(dir) {
   if (!statSync(dir, { throwIfNoEntry: false })) return [];
   const out = [];
@@ -32,7 +46,7 @@ function resolveImports(file, stack = [], seen = new Set(), out = []) {
   if (seen.has(file)) return out;
   seen.add(file);
   stack.push(file);
-  const text = readFileSync(file, "utf8");
+  const text = readFileCached(file);
   for (const line of text.split("\n")) {
     const match = IMPORT_RE.exec(line.trim());
     if (!match) continue;
@@ -41,6 +55,11 @@ function resolveImports(file, stack = [], seen = new Set(), out = []) {
   stack.pop();
   out.push(file);
   return out;
+}
+
+function writeFile(path, content) {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, content);
 }
 
 function stripImportHeaders(text) {
@@ -52,7 +71,7 @@ function stripImportHeaders(text) {
 
 function compose(file) {
   return resolveImports(file)
-    .map((f) => stripImportHeaders(readFileSync(f, "utf8")))
+    .map((f) => stripImportHeaders(readFileCached(f)))
     .join("\n\n");
 }
 
@@ -62,7 +81,7 @@ rmSync(VALIDATE_DIR, { recursive: true, force: true });
 rmSync(GEN_DIR, { recursive: true, force: true });
 
 const allFiles = listWgslFiles(SRC_DIR);
-const entryFiles = allFiles.filter((f) => ENTRY_RE.test(readFileSync(f, "utf8")));
+const entryFiles = allFiles.filter((f) => ENTRY_RE.test(readFileCached(f)));
 
 if (allFiles.length === 0) {
   console.log("wgsl:validate — no .wgsl files yet, nothing to do");
@@ -89,8 +108,7 @@ for (const file of entryFiles) {
   }
 
   const validatePath = join(VALIDATE_DIR, rel);
-  mkdirSync(dirname(validatePath), { recursive: true });
-  writeFileSync(validatePath, composed);
+  writeFile(validatePath, composed);
 
   try {
     execFileSync("naga", [validatePath], { stdio: "pipe" });
@@ -103,8 +121,7 @@ for (const file of entryFiles) {
   }
 
   const genPath = join(GEN_DIR, rel.replace(/\.wgsl$/, ".wgsl.ts"));
-  mkdirSync(dirname(genPath), { recursive: true });
-  writeFileSync(genPath, `export default ${JSON.stringify(composed)};\n`);
+  writeFile(genPath, `export default ${JSON.stringify(composed)};\n`);
   console.log(`ok   ${rel}`);
 }
 
