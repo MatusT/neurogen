@@ -26,6 +26,7 @@ const FILTER_INDEX_MASK: u32 = 0xfu;
 fn main(@builtin(global_invocation_id) globalId: vec3<u32>) {
     let size = ofFlowLevelSize(params.pyramidLevel);
     let pos = vec2<i32>(globalId.xy);
+    if (!ofInBounds(pos, size)) { return; }
 
     var taps: array<vec2<i32>, FILTER_TAPS>;
     var tap = 0;
@@ -51,8 +52,6 @@ fn main(@builtin(global_invocation_id) globalId: vec3<u32>) {
 
         best = min((score << FILTER_SCORE_SHIFT) | u32(i), best);
     }
-
-    if (!ofInBounds(pos, size)) { return; }
 
     flowOut[ofFlatIndex(pos, size)] = taps[best & FILTER_INDEX_MASK];
 }

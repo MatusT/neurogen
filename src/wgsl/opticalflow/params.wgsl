@@ -20,6 +20,9 @@
 // FFX_OPTICALFLOW_BLOCK_SIZE.
 const OF_BLOCK_SIZE: i32 = 8;
 
+// Frozen v1 pyramid depth. Only used to bound the level loop below.
+const OF_MAX_PYRAMID_LEVELS: u32 = 2u;
+
 struct OpticalFlowParams {
     // Level-0 luma dimensions, i.e. the render resolution.
     lumaSize: vec2<i32>,
@@ -51,7 +54,10 @@ fn ofLumaLevelSize(level: u32) -> vec2<i32> {
 fn ofFlowLevelSize(level: u32) -> vec2<i32> {
     var size = (params.lumaSize + vec2<i32>(OF_BLOCK_SIZE - 1)) / vec2<i32>(OF_BLOCK_SIZE);
 
-    for (var i = 0u; i < level; i++) {
+    // Callers reach the next-finer level as `pyramidLevel - 1`, which wraps to
+    // 0xffffffff if a caller ever dispatches them at level 0. Bounding the
+    // count turns that mistake into a wrong size rather than a GPU hang.
+    for (var i = 0u; i < min(level, OF_MAX_PYRAMID_LEVELS); i++) {
         size = (size + vec2<i32>(1)) / vec2<i32>(2);
     }
 
