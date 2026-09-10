@@ -7,7 +7,7 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "npm run wgsl:validate && tsc -p tsconfig.json",
+    "build": "npm run wgsl:validate && tsc -p tsconfig.json && tsc -p tsconfig.test.json",
     "wgsl:validate": "node scripts/validate-wgsl.mjs",
     "test": "vitest run",
     "demo": "vite demo"
@@ -16,6 +16,7 @@
     "@webgpu/types": "^0.1.44",
     "typescript": "^5.6.3",
     "vite": "^5.4.10",
-    "vitest": "^2.1.4"
+    "vitest": "^2.1.4",
+    "webgpu": "^0.6.0"
   }
 }
