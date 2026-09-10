@@ -58,8 +58,10 @@ struct FrameInterpolationParams {
     // Which inpainting mip the current pyramid dispatch writes; ignored by
     // every other pass.
     inpaintingMipLevel: u32,
-    // Host-forced reset (resolution change, first frame, history discarded).
-    // Folded into the same counter the scene-change flag drives.
+    // Host-forced reset: resolution change, history discarded, and required on
+    // the very first `prepare()` — there is no previous frame to interpolate
+    // from and no scene-change flag will say so. Folded into the same counter
+    // the scene-change flag drives; see FrameInterpolationState.
     reset: u32,
 }
 
