@@ -98,16 +98,26 @@ describe("marker measurement", () => {
 
   // A red bar on a grey field: the arrangement measureMarker is built to read,
   // with the answer known by construction rather than by rendering.
-  function frame(bar: { left: number; top?: number; height?: number; red?: number }): Float32Array {
+  interface Bar {
+    left: number;
+    top?: number;
+    height?: number;
+    red?: number;
+    // Rewrites a pixel inside the bar, given its position within the bar.
+    corrupt?: (x: number, y: number, red: number) => number;
+  }
+
+  function frame(bar: Bar): Float32Array {
     const [width, height] = SIZE;
     const texels = new Float32Array(width * height * 4);
     const top = bar.top ?? BAR.top;
     const tall = bar.height ?? BAR.height;
-    const red = bar.red ?? 1;
+    const flat = bar.red ?? 1;
 
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
         const inside = x >= bar.left && x < bar.left + BAR.width && y >= top && y < top + tall;
+        const red = bar.corrupt && inside ? bar.corrupt(x - bar.left, y - top, flat) : flat;
         texels.set(inside ? [red, 0, 0, 1] : [0.3, 0.34, 0.4, 1], (y * width + x) * 4);
       }
     }
@@ -161,6 +171,31 @@ describe("marker measurement", () => {
     for (const wrong of [shifted, oneRow, dimmed]) {
       expect(wrong.join(" ")).not.toMatch(/midpoint of|bars|wide/);
     }
+  });
+
+  // Both of these leave every row total and every column total intact enough to
+  // pass all six of the other checks. They are the reason the seventh keeps the
+  // bar's pixels instead of another projection of them.
+  it("rejects corruption inside the bar that no row or column sum can see", () => {
+    // Plus and minus a quarter in 2x2 blocks: every row sum and column sum comes
+    // out bit-identical, so mass and both profiles are unchanged.
+    const checkerboard = profile({
+      left: 48,
+      corrupt: (x, y, red) => red + (((x >> 1) + (y >> 1)) % 2 === 0 ? 0.25 : -0.25),
+    });
+    expect(checkerboard.mass).toBe(profile({ left: 48 }).mass);
+    expect(midpointFailures(previous(), current(), checkerboard).join(" ")).toMatch(/pixels differ/);
+
+    // A patch cut out of the bar, sized to stay inside the mass tolerance:
+    // 18 pixels of 400 is 4.5% where the tolerance is 5%.
+    const hole = profile({
+      left: 48,
+      corrupt: (x, y, red) => (x >= 3 && x < 5 && y >= 20 && y < 29 ? 0 : red),
+    });
+    const failures = midpointFailures(previous(), current(), hole);
+    expect(hole.mass / previous().mass).toBeGreaterThan(0.95);
+    expect(failures.join(" ")).toMatch(/pixels differ/);
+    expect(failures.join(" ")).not.toMatch(/carries/);
   });
 
   it("rejects a mistimed bar", () => {
@@ -224,6 +259,12 @@ describe("presentation schedule", () => {
   const REFRESHES = 16;
   const NEVER = -1;
 
+  interface Presented {
+    what: Shown;
+    realFrame: number;
+    time: number;
+  }
+
   // Displayed time in half real frames: real frame n is 2n, and the frame
   // interpolated between n-1 and n is 2n-1.
   function time(what: Shown, realFrame: number): number {
@@ -237,11 +278,11 @@ describe("presentation schedule", () => {
   // The render loop's schedule with the GPU taken out, flipping the toggle
   // between refresh `flipAt - 1` and `flipAt` the way a click between two
   // refreshes does. `gate` is the rule under test.
-  function run(from: FrameGen, flipAt: number, gate = enabledFrom): number[] {
+  function run(from: FrameGen, flipAt: number, gate = enabledFrom): Presented[] {
     let mode = from;
     let realFrame = -1;
-    let enabled = gate(0);
-    const times: number[] = [];
+    let enabled = gate(realFrame);
+    const presented: Presented[] = [];
 
     for (let refresh = 0; refresh < REFRESHES; refresh++) {
       if (refresh === flipAt) {
@@ -251,13 +292,20 @@ describe("presentation schedule", () => {
 
       const rendered = refresh % 2 === 0;
       realFrame += rendered ? 1 : 0;
-      times.push(time(shown({ mode, rendered, realFrame, enabledFrom: enabled }), realFrame));
+      const what = shown({ mode, rendered, realFrame, enabledFrom: enabled });
+      presented.push({ what, realFrame, time: time(what, realFrame) });
     }
 
-    return times;
+    return presented;
   }
 
-  const nonDecreasing = (times: number[]) => times.every((at, i) => i === 0 || at >= times[i - 1]);
+  const times = (presented: Presented[]) => presented.map((at) => at.time);
+  const nonDecreasing = (run: Presented[]) =>
+    times(run).every((at, i) => i === 0 || at >= times(run)[i - 1]);
+  // Real frame 0 has no predecessor, so neither the frame before it nor the
+  // frame interpolated up to it has been rendered.
+  const allRendered = (run: Presented[]) =>
+    run.every((at) => at.what === Shown.RealCurrent || at.realFrame >= 1);
 
   it("never steps displayed time backwards, whenever the toggle is flipped", () => {
     for (let flipAt = 0; flipAt < REFRESHES; flipAt++) {
@@ -266,24 +314,44 @@ describe("presentation schedule", () => {
     }
   });
 
+  it("never asks for a frame that has not been rendered", () => {
+    // Including a flip before the first refresh, where there is no real frame
+    // yet: the render loop holds the interpolated texture undefined until then,
+    // and would throw on every refresh from that point on.
+    for (let flipAt = 0; flipAt < REFRESHES; flipAt++) {
+      expect([flipAt, allRendered(run(FrameGen.Off, flipAt))]).toEqual([flipAt, true]);
+      expect([flipAt, allRendered(run(FrameGen.On, flipAt))]).toEqual([flipAt, true]);
+    }
+  });
+
+  it("would ask for one without the clamp on the first real frame", () => {
+    const unclamped = (realFrame: number) => realFrame + 1;
+    const early = run(FrameGen.Off, 0, unclamped);
+
+    expect(early[0].what).toBe(Shown.RealPrevious);
+    expect(early[1].what).toBe(Shown.Interpolated);
+    expect(early[1].realFrame).toBe(0);
+    expect(allRendered(early)).toBe(false);
+  });
+
   it("would step backwards if frame generation engaged on the current real frame", () => {
     // Engaging it on the refresh right after real frame n was presented: the
     // frame between n-1 and n is older than what is already on screen. The gate
     // is what stops that, and this is the test above being able to see it.
     const engagedImmediately = () => 1;
-    const times = run(FrameGen.Off, 3, engagedImmediately);
+    const engaged = run(FrameGen.Off, 3, engagedImmediately);
 
-    expect(times.slice(2, 4)).toEqual([2, 1]);
-    expect(nonDecreasing(times)).toBe(false);
+    expect(times(engaged).slice(2, 4)).toEqual([2, 1]);
+    expect(nonDecreasing(engaged)).toBe(false);
   });
 
   it("advances half a real frame per refresh once engaged", () => {
-    const settled = run(FrameGen.On, NEVER).slice(4);
+    const settled = times(run(FrameGen.On, NEVER)).slice(4);
 
     expect(settled.every((at, i) => i === 0 || at === settled[i - 1] + 1)).toBe(true);
   });
 
   it("holds each real frame for two refreshes when off", () => {
-    expect(run(FrameGen.Off, NEVER).slice(0, 6)).toEqual([0, 0, 2, 2, 4, 4]);
+    expect(times(run(FrameGen.Off, NEVER)).slice(0, 6)).toEqual([0, 0, 2, 2, 4, 4]);
   });
 });

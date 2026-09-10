@@ -46,8 +46,12 @@ export function shown(refresh: Refresh): Shown {
 // the first interpolated frame shown is at 2n+1, and the real frame n presented
 // in between is a repeat rather than a step back.
 //
-// Also the starting value, for the same reason from the other end: real frame 0
-// has no predecessor, so nothing has been interpolated yet.
+// Never earlier than real frame 1, whatever the toggle is doing: real frame 0
+// has no predecessor, so nothing has been interpolated yet and neither
+// Shown.Interpolated nor Shown.RealPrevious names a frame that exists. Without
+// the clamp, a change event fired before the first refresh -- a fast
+// uncheck/recheck at page load -- sets this to 0 and the loop then asks for a
+// frame that was never rendered.
 export function enabledFrom(realFrame: number): number {
-  return realFrame + 1;
+  return Math.max(1, realFrame + 1);
 }

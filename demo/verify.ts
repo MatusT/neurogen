@@ -2,21 +2,27 @@
 // constant velocity, and the interpolated frame's copy of it measured against
 // the midpoint of the two real frames it was generated from.
 //
-// Six things have to hold, and only together do they mean anything:
+// Seven things have to hold, and only together do they mean anything:
 //
 //   across    the bar's centroid sits halfway between the two real frames'
 //   shape     it is one bar, not two, and the same width
 //   down      it sits on the same row, at the same height
 //   mass      it carries the same red
+//   interior  its pixels match the real frames', box-aligned
 //
 // Each covers a failure the others are blind to. The bar is narrower than its
 // per-frame travel, so a crossfade of the two real frames leaves two bars with
 // a gap — and the same centroid as the right answer, which is why counting the
 // bars is not decoration. A column profile says nothing at all about the other
 // axis, so without the row figures a bar slid a hundred pixels down, or reduced
-// to a single row, measures identically to a correct one. And `ghost` is a
-// ratio, so a uniformly dimmer frame leaves it unchanged; `mass` is what sees
-// that.
+// to a single row, measures identically to a correct one. `ghost` is a ratio,
+// so a uniformly dimmer frame leaves it unchanged; `mass` is what sees that.
+//
+// And every one of those is a sum along an axis, which cannot see structure that
+// cancels: a checkerboard of plus and minus a quarter over the bar leaves every
+// row total and every column total bit-identical. The last check is the only one
+// that looks inside the bar, and being box-aligned it is deliberately blind to
+// translation — so it adds to the centroids rather than replacing them.
 
 import {
   FrameGenerator,
@@ -113,6 +119,12 @@ export interface MarkerProfile {
   // Total red in the bar, unnormalised. `ghost` is a ratio and cannot see a
   // frame that is uniformly dimmer; this can.
   mass: number;
+  // The bar's own pixels, cropped to its bounding box. Everything above is a
+  // sum along one axis or the other, and a sum cannot see structure that
+  // cancels: a checkerboard of plus and minus a quarter leaves every row total
+  // and every column total exactly as they were. Keeping the pixels is the only
+  // thing that catches it.
+  bar: MarkerBox;
   // Fraction of the frame's red lying outside the bar. The blend leaves a
   // partial trail behind a fast edge, and averaging it into the centroid would
   // report that ghost as a timing error, so it is measured rather than mixed in.
@@ -124,6 +136,9 @@ interface AxisProfile {
   span: number;
   bars: number;
   weight: number;
+  // The measured window, one cell wider than the bar at each end.
+  from: number;
+  to: number;
 }
 
 // Where the marker sits along one axis, from that axis's summed profile.
@@ -184,7 +199,36 @@ function measureAxis(values: Float32Array): AxisProfile {
     span: bar.to - bar.from + 1,
     bars: runs.length,
     weight: total > 0 ? weight : 0,
+    from,
+    to,
   };
+}
+
+export interface MarkerBox {
+  width: number;
+  height: number;
+  pixels: Float32Array;
+}
+
+// Cropped to the bar's own bounding box rather than to a fixed region, so the
+// three frames' boxes line up with each other however far the bar has moved.
+// That makes this comparison blind to translation by construction, which is why
+// the centroids above are still what places the bar.
+function crop(
+  red: Float32Array,
+  width: number,
+  across: AxisProfile,
+  down: AxisProfile,
+): MarkerBox {
+  const box = { width: across.to - across.from + 1, height: down.to - down.from + 1 };
+  const pixels = new Float32Array(box.width * box.height);
+  for (let y = 0; y < box.height; y++) {
+    for (let x = 0; x < box.width; x++) {
+      pixels[y * box.width + x] = red[(down.from + y) * width + across.from + x];
+    }
+  }
+
+  return { ...box, pixels };
 }
 
 // The marker is the only red thing in the scene and the backdrop is blue-grey,
@@ -195,16 +239,18 @@ export function measureMarker(
   size: readonly [number, number],
 ): MarkerProfile {
   const [width, height] = size;
+  const red = new Float32Array(width * height);
   const columns = new Float32Array(width);
   const rows = new Float32Array(height);
   let total = 0;
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const at = (y * width + x) * CHANNELS;
-      const red = Math.max(0, texels[at] - Math.max(texels[at + 1], texels[at + 2]));
-      columns[x] += red;
-      rows[y] += red;
-      total += red;
+      const value = Math.max(0, texels[at] - Math.max(texels[at + 1], texels[at + 2]));
+      red[y * width + x] = value;
+      columns[x] += value;
+      rows[y] += value;
+      total += value;
     }
   }
 
@@ -219,6 +265,7 @@ export function measureMarker(
     rowSpan: down.span,
     mass: across.weight,
     ghost: total > 0 ? (total - across.weight) / total : 0,
+    bar: crop(red, width, across, down),
   };
 }
 
@@ -230,6 +277,37 @@ const SPAN_TOLERANCE_PIXELS = 1;
 // Five percent leaves room for a driver rasterising an edge differently while
 // staying nowhere near what losing rows or dimming the frame would cost.
 const MASS_TOLERANCE_FRACTION = 0.05;
+// The real pipeline measures 0.04% here, and the smallest corruption that gets
+// past every other check — a patch cut out of the bar small enough to stay
+// inside the mass tolerance — measures 4.5%. Two percent sits fifty times above
+// the one and twice below the other.
+const BAR_TOLERANCE_FRACTION = 0.02;
+
+// How far the interpolated bar's pixels sit from the real frames', box-aligned,
+// as a fraction of the red they contain.
+//
+// The marker moves a whole number of pixels per real frame, so the frame between
+// two of them is a whole-pixel shift and the boxes line up exactly. A fractional
+// velocity would resample the bar and this would have to compare against a
+// resampled reference instead.
+function barMismatch(previous: MarkerBox, current: MarkerBox, interpolated: MarkerBox): number {
+  const sameSize = (box: MarkerBox) =>
+    box.width === interpolated.width && box.height === interpolated.height;
+  if (!sameSize(previous) || !sameSize(current)) {
+    // The span checks already say so, and there is nothing to line up against.
+    return Number.POSITIVE_INFINITY;
+  }
+
+  let difference = 0;
+  let mass = 0;
+  for (let at = 0; at < interpolated.pixels.length; at++) {
+    const expected = (previous.pixels[at] + current.pixels[at]) / 2;
+    difference += Math.abs(interpolated.pixels[at] - expected);
+    mass += expected;
+  }
+
+  return mass > 0 ? difference / mass : Number.POSITIVE_INFINITY;
+}
 
 // Everything about the interpolated frame this measurement can see going wrong,
 // as sentences rather than a boolean — a caller that only knows "it failed"
@@ -281,6 +359,15 @@ export function midpointFailures(
     `bar carries ${(interpolated.mass / mass).toFixed(3)} of the real frames' red`,
   );
 
+  // Last, because it is the only check that looks at the bar's interior rather
+  // than at a total: a hole punched inside it, or a pattern that sums to
+  // nothing along both axes, changes no figure above.
+  const mismatch = barMismatch(previous.bar, current.bar, interpolated.bar);
+  report(
+    mismatch > BAR_TOLERANCE_FRACTION,
+    `bar's pixels differ from the real frames' by ${(mismatch * 100).toFixed(1)}% of their red`,
+  );
+
   return failures;
 }
 
@@ -300,6 +387,8 @@ export interface MidpointMeasurement {
   midpoint: number;
   error: number;
   tolerance: number;
+  // The bar's interior against the real frames', box-aligned.
+  mismatch: number;
   // Empty when the interpolated frame passed every check.
   failures: string[];
 }
@@ -362,6 +451,7 @@ export async function measureMidpointTiming(
     midpoint,
     error: Math.abs(measured.centroid - midpoint),
     tolerance: MIDPOINT_TOLERANCE_PIXELS,
+    mismatch: barMismatch(previous.bar, current.bar, measured.bar),
     failures: midpointFailures(previous, current, measured),
   };
 }
@@ -383,6 +473,7 @@ export function formatMeasurement(m: MidpointMeasurement): string {
     `red in the bar           ${px(m.previous.mass)} / ${m.interpolated.mass.toFixed(2)} / ${m.current.mass.toFixed(2)}`,
     `separate bars            ${m.previous.bars} / ${m.interpolated.bars} / ${m.current.bars}      (2 in the middle would be a crossfade)`,
     `red outside the bar      ${(m.interpolated.ghost * 100).toFixed(1)}%      (the blend's trail behind a fast edge)`,
+    `bar pixels vs real       ${(m.mismatch * 100).toFixed(2)}%      (structure no row or column sum can see)`,
     m.failures.length === 0
       ? "all checks passed"
       : `FAILED: ${m.failures.join("; ")}`,

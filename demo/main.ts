@@ -98,9 +98,7 @@ function run(device: GPUDevice, context: GPUCanvasContext, format: GPUTextureFor
   // Written by every real frame after the first, which is exactly when the
   // schedule can return Shown.Interpolated.
   let interpolated!: GPUTexture;
-  // Started as though the toggle had just been engaged while real frame 0 was
-  // on screen: the frame between 0 and 1 is the first thing there is to show.
-  let enabled = enabledFrom(0);
+  let enabled = enabledFrom(realFrame);
   let paused = false;
   let windowStart = performance.now();
   let presentedInWindow = 0;
