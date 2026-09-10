@@ -7,7 +7,7 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "npm run wgsl:validate && tsc -p tsconfig.json && tsc -p tsconfig.test.json",
+    "build": "npm run wgsl:validate && tsc -p tsconfig.json && tsc -p tsconfig.test.json && tsc -p tsconfig.demo.json",
     "wgsl:validate": "node scripts/validate-wgsl.mjs",
     "train:neural": "vite-node scripts/train-blend-mlp.ts",
     "test": "vitest run",

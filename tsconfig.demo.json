@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": ".",
+    // The demo is a bundler-based consumer, and imports the trained blend
+    // weight asset the way one would.
+    "resolveJsonModule": true
+  },
+  "include": ["demo"]
+}
