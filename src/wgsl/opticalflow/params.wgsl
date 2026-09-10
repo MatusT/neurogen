@@ -73,6 +73,18 @@ fn ofLumaLevelSize(level: u32) -> vec2<i32> {
 
 // The motion vector grid ceil-halves instead — the two conventions genuinely
 // disagree in AMD's source, so they are kept apart here.
+//
+// At non-multiple-of-16 render widths/heights, the search's dispatch (sized
+// from the floor-halved luma dimensions) covers fewer cells at level >= 1
+// than this ceil-halved grid actually has — e.g. a 1921px-wide render leaves
+// the flow grid's last column at level 1 unwritten. AMD's own host-side
+// dispatch math has the identical gap. It's benign: those cells stay at
+// their zero-initialized default, which the level-1 median filter and the
+// coarse-to-fine scale-up treat as an extra fabricated zero tap rather than
+// garbage, and level >= 1 validity is never read downstream (only the final
+// level-0 output is, and level 0's dispatch is provably full-coverage: see
+// the module output contract above). Not worth restructuring the dispatch
+// math to close a gap that's already this narrow and already matches AMD.
 fn ofFlowLevelSize(level: u32) -> vec2<i32> {
     var size = (params.lumaSize + vec2<i32>(OF_BLOCK_SIZE - 1)) / vec2<i32>(OF_BLOCK_SIZE);
 

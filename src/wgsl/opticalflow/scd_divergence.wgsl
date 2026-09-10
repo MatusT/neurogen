@@ -98,6 +98,15 @@ fn main(@builtin(workgroup_id) groupId: vec3<u32>, @builtin(local_invocation_ind
     let current = filteredHistogram[localIndex] / sumScratch[0];
     let previous = scdPreviousHistogram[bin];
 
+    // `scdPreviousHistogram` is a fresh storage buffer's zero-initialized
+    // default until scd_finalize.wgsl has run at least once (frame 0, or
+    // after any external reset). `previous` is then 0, making this
+    // divergence value +-inf/NaN. That's intentional dead computation, not a
+    // bug: scd_finalize.wgsl unconditionally forces sceneChangeDetected for
+    // params.frameIndex <= SCD_WARMUP_FRAMES regardless of what lands in
+    // scdTemp here, and `scdFilteredHistogram` below (what actually becomes
+    // next frame's `scdPreviousHistogram`) is `current` alone — it never
+    // reads `previous`, so nothing NaN/Inf-poisoned is ever persisted.
     // Symmetrised Kullback-Leibler: both directions, so a bin appearing and a
     // bin vanishing weigh the same.
     divergenceScratch[localIndex] = vec2<f32>(current * log(current / previous),

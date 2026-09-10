@@ -22,7 +22,10 @@
 @group(0) @binding(5) var<storage, read_write> sceneChange: OpticalFlowSceneChange;
 
 // No previous frame to diverge from yet, so the first frames are always
-// treated as a cut.
+// treated as a cut. This also masks scd_divergence.wgsl's NaN/Inf output
+// during warmup (see the comment there) — `changed` below is forced true
+// regardless of whatever landed in `scdTemp`, and `scdTemp` is zeroed at the
+// end of this dispatch either way, so the garbage never reaches frame 1.
 const SCD_WARMUP_FRAMES: u32 = 5u;
 
 @compute @workgroup_size(256)
