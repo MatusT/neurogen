@@ -43,10 +43,18 @@ struct OpticalFlowSceneChange {
 
 @group(0) @binding(0) var<uniform> params: OpticalFlowParams;
 
+// Passes that write the next-finer level derive it as `pyramidLevel - 1`,
+// which wraps to 0xffffffff if one is ever dispatched at level 0. Clamping
+// turns that mistake into a wrong size rather than an indeterminate shift or a
+// four-billion iteration loop.
+fn ofClampLevel(level: u32) -> u32 {
+    return min(level, OF_MAX_PYRAMID_LEVELS);
+}
+
 // The luma pyramid floor-halves per level, matching AMD's level textures and
 // the clamp its packed-luma loads assume.
 fn ofLumaLevelSize(level: u32) -> vec2<i32> {
-    return max(params.lumaSize >> vec2<u32>(level), vec2<i32>(1));
+    return max(params.lumaSize >> vec2<u32>(ofClampLevel(level)), vec2<i32>(1));
 }
 
 // The motion vector grid ceil-halves instead — the two conventions genuinely
@@ -54,10 +62,7 @@ fn ofLumaLevelSize(level: u32) -> vec2<i32> {
 fn ofFlowLevelSize(level: u32) -> vec2<i32> {
     var size = (params.lumaSize + vec2<i32>(OF_BLOCK_SIZE - 1)) / vec2<i32>(OF_BLOCK_SIZE);
 
-    // Callers reach the next-finer level as `pyramidLevel - 1`, which wraps to
-    // 0xffffffff if a caller ever dispatches them at level 0. Bounding the
-    // count turns that mistake into a wrong size rather than a GPU hang.
-    for (var i = 0u; i < min(level, OF_MAX_PYRAMID_LEVELS); i++) {
+    for (var i = 0u; i < ofClampLevel(level); i++) {
         size = (size + vec2<i32>(1)) / vec2<i32>(2);
     }
 
