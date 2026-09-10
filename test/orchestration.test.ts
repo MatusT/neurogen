@@ -320,26 +320,75 @@ describe("frame generator", () => {
     };
   }
 
+  // The handed-back texture is rgba16float, so a readback has to decode halves.
+  // Only the exponent range the fixture uses is covered.
+  function decodeHalf(bits: number): number {
+    const sign = bits >>> 15 ? -1 : 1;
+    const exponent = (bits >>> 10) & 0x1f;
+    const mantissa = bits & 0x3ff;
+    if (exponent === 0) {
+      return sign * mantissa * 2 ** -24;
+    }
+
+    return sign * (mantissa + 1024) * 2 ** (exponent - 25);
+  }
+
+  // copyTextureToBuffer needs a 256-byte row pitch, which is exactly the
+  // constraint the blit pass exists to sidestep on the way in — so the readback
+  // pads and unpads rather than assuming a convenient width.
+  const COPY_ROW_ALIGNMENT = 256;
+
+  async function readTexture(texture: GPUTexture): Promise<Float32Array> {
+    const { width, height } = texture;
+    const paddedRowBytes = Math.ceil((width * 8) / COPY_ROW_ALIGNMENT) * COPY_ROW_ALIGNMENT;
+    const readback = harness.device.createBuffer({
+      size: paddedRowBytes * height,
+      usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+    });
+    const encoder = harness.device.createCommandEncoder();
+    encoder.copyTextureToBuffer(
+      { texture },
+      { buffer: readback, bytesPerRow: paddedRowBytes },
+      { width, height },
+    );
+    harness.device.queue.submit([encoder.finish()]);
+    await readback.mapAsync(GPUMapMode.READ);
+    const padded = readback.getMappedRange().slice(0);
+    readback.unmap();
+    readback.destroy();
+
+    const texels = new Float32Array(width * height * 4);
+    for (let y = 0; y < height; y++) {
+      const row = new Uint16Array(padded, y * paddedRowBytes, width * 4);
+      for (let i = 0; i < row.length; i++) {
+        texels[y * width * 4 + i] = decodeHalf(row[i]);
+      }
+    }
+
+    return texels;
+  }
+
   async function generate(
     inputs: ReturnType<typeof translationInputs>,
     neuralWeights?: NeuralNetworkWeights,
-  ): Promise<{ color: Float32Array; weight: Float32Array }> {
+  ): Promise<{ color: Float32Array; texture: Float32Array; weight: Float32Array }> {
     const generator = new FrameGenerator({ device: harness.device });
     if (neuralWeights) {
       generator.installNeuralBlendWeight(neuralWeights);
     }
     await checked(harness, () => generator.configure({ ...PROJECTION, renderWidth: WIDTH, renderHeight: HEIGHT }));
 
-    let color!: GPUBuffer;
+    let texture!: GPUTexture;
     for (let frame = 0; frame < SETTLED_FRAMES; frame++) {
       await checked(harness, () => {
         generator.prepare(inputs);
-        color = generator.dispatch();
+        texture = generator.dispatch();
       });
     }
 
     const result = {
-      color: new Float32Array(await harness.readBuffer(color, PIXELS * 16)),
+      color: new Float32Array(await harness.readBuffer(generator.interpolatedColor, PIXELS * 16)),
+      texture: await readTexture(texture),
       weight: new Float32Array(await harness.readBuffer(generator.blendWeight, PIXELS * 4)),
     };
     generator.destroy();
@@ -348,20 +397,66 @@ describe("frame generator", () => {
   }
 
   it("lands a uniform translation exactly halfway between the two frames", async () => {
-    const { color } = await generate(translationInputs());
+    const { color, texture } = await generate(translationInputs());
 
     let worst = 0;
+    let worstTexel = 0;
     for (let y = 0; y < HEIGHT; y++) {
       for (let x = 0; x < WIDTH; x++) {
         const index = (y * WIDTH + x) * 4;
         // Half of a two-pixel step, on a ramp: the midpoint of the two sources.
-        worst = Math.max(worst, Math.abs(color[index] - (x - SHIFT_PIXELS / 2) / WIDTH));
+        const expected = (x - SHIFT_PIXELS / 2) / WIDTH;
+        worst = Math.max(worst, Math.abs(color[index] - expected));
+        worstTexel = Math.max(worstTexel, Math.abs(texture[index] - expected));
         expect([x, y, color[index + 3]]).toEqual([x, y, 1]);
       }
     }
 
     expect(worst).toBeLessThan(1e-3);
     expect(color.every(Number.isFinite)).toBe(true);
+    // The texture is the same frame at half the mantissa, so it only has to
+    // agree to f16 precision over the 0..1 range this fixture spans.
+    expect(worstTexel).toBeLessThan(1e-3);
+  });
+
+  it("hands back a texture at a width no buffer copy could have filled", async () => {
+    // 67 * 16 bytes per row is not a multiple of 256, so copyBufferToTexture
+    // could not have written this and the blit pass is doing real work.
+    const [width, height] = [67, 37];
+    const generator = new FrameGenerator({ device: harness.device });
+    await checked(harness, () =>
+      generator.configure({ ...PROJECTION, renderWidth: width, renderHeight: height }),
+    );
+
+    const flat = (value: readonly [number, number, number, number]) => {
+      const texels = new Float32Array(width * height * 4);
+      for (let i = 0; i < width * height; i++) {
+        texels.set(value, i * 4);
+      }
+      return harness.createTexture(width, height, texels).createView();
+    };
+    const inputs = {
+      currentColor: flat([0.25, 0.5, 0.75, 1]),
+      previousColor: flat([0.25, 0.5, 0.75, 1]),
+      depth: flat([0.5, 0, 0, 1]),
+      motionVectors: flat([0, 0, 0, 1]),
+    };
+
+    let texture!: GPUTexture;
+    for (let frame = 0; frame < SETTLED_FRAMES; frame++) {
+      await checked(harness, () => {
+        generator.prepare(inputs);
+        texture = generator.dispatch();
+      });
+    }
+    const texels = await readTexture(texture);
+    generator.destroy();
+
+    expect([texture.width, texture.height]).toEqual([width, height]);
+    for (let i = 0; i < width * height; i++) {
+      expect([i, [texels[i * 4], texels[i * 4 + 1], texels[i * 4 + 2], texels[i * 4 + 3]]])
+        .toEqual([i, [0.25, 0.5, 0.75, 1]]);
+    }
   });
 
   it("dispatches the neural writer in place of the classical one", async () => {

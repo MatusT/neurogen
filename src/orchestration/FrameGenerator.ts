@@ -18,6 +18,7 @@ import {
 } from "./frameInterpolation.js";
 import { assertBlendWeightShape } from "./neuralBlendWeight.js";
 import { OpticalFlowStage } from "./opticalFlow.js";
+import { InterpolatedOutput } from "./output.js";
 import { History, TransferFunction, type LuminanceRange } from "./params.js";
 import type { NeuralNetworkWeights } from "../wgsl/neural/weights.js";
 
@@ -60,6 +61,7 @@ export class FrameGenerator {
 
   private opticalFlow: OpticalFlowStage | null = null;
   private frameInterpolation: FrameInterpolationStage | null = null;
+  private output: InterpolatedOutput | null = null;
   private neuralWeights: NeuralNetworkWeights | null = null;
   private pending: FrameBlend | null = null;
   private frameIndex = 0;
@@ -92,6 +94,12 @@ export class FrameGenerator {
         verticalFovRadians: config.verticalFovRadians,
       },
       this.opticalFlow,
+    );
+
+    this.output = new InterpolatedOutput(
+      this.device,
+      renderSize,
+      this.frameInterpolation.interpolatedColor,
     );
 
     if (this.neuralWeights) {
@@ -130,11 +138,11 @@ export class FrameGenerator {
     this.device.queue.submit([encoder.finish()]);
   }
 
-  // Returns the interpolated frame: one vec4<f32> per pixel, row-major at render
-  // resolution, alpha 1. Owned by this generator and overwritten by the next
-  // dispatch().
-  dispatch(): GPUBuffer {
-    const { frameInterpolation } = this.stages();
+  // Runs the blend and inpainting and returns the interpolated frame: the frame
+  // midway between the two handed to prepare(). Owned by this generator, in
+  // INTERPOLATED_TEXTURE_FORMAT, and overwritten by the next dispatch().
+  dispatch(): GPUTexture {
+    const { frameInterpolation, output } = this.stages();
     if (!this.pending) {
       throw new Error("dispatch() called before prepare()");
     }
@@ -142,13 +150,21 @@ export class FrameGenerator {
     const encoder = this.device.createCommandEncoder({ label: "neurogen-dispatch" });
     const pass = encoder.beginComputePass();
     frameInterpolation.encodeDispatch(pass, this.pending);
+    output.encode(pass);
     pass.end();
     this.device.queue.submit([encoder.finish()]);
 
     this.pending = null;
     this.frameIndex++;
 
-    return frameInterpolation.interpolatedColor;
+    return output.texture;
+  }
+
+  // The same frame as a storage buffer, one vec4<f32> per pixel, row-major,
+  // alpha 1 — what the module actually writes, before the copy into the
+  // texture. For a caller that would rather bind the buffer than sample.
+  get interpolatedColor(): GPUBuffer {
+    return this.stages().frameInterpolation.interpolatedColor;
   }
 
   // The blend weight the installed writer produced for the last dispatch(): one
@@ -163,18 +179,28 @@ export class FrameGenerator {
   destroy(): void {
     this.opticalFlow?.destroy();
     this.frameInterpolation?.destroy();
+    this.output?.destroy();
     this.opticalFlow = null;
     this.frameInterpolation = null;
+    this.output = null;
     this.pending = null;
     this.frameIndex = 0;
   }
 
-  private stages(): { opticalFlow: OpticalFlowStage; frameInterpolation: FrameInterpolationStage } {
-    if (!this.opticalFlow || !this.frameInterpolation) {
+  private stages(): {
+    opticalFlow: OpticalFlowStage;
+    frameInterpolation: FrameInterpolationStage;
+    output: InterpolatedOutput;
+  } {
+    if (!this.opticalFlow || !this.frameInterpolation || !this.output) {
       throw new Error("configure() must be called before prepare() or dispatch()");
     }
 
-    return { opticalFlow: this.opticalFlow, frameInterpolation: this.frameInterpolation };
+    return {
+      opticalFlow: this.opticalFlow,
+      frameInterpolation: this.frameInterpolation,
+      output: this.output,
+    };
   }
 }
 
