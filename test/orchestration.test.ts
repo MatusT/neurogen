@@ -72,11 +72,14 @@ function noiseTexture(
 // FrameGenerator does its own encoding rather than going through the harness's
 // `dispatch()`, so nothing else would catch a mismatched binding — and a
 // dispatch that never ran reads back as plausible zeroes.
-async function checked<T>(harness: GpuHarness, body: () => T): Promise<T> {
+async function checked<T>(harness: GpuHarness, body: () => T): Promise<Awaited<T>> {
   const { device } = harness;
   device.pushErrorScope("validation");
   try {
-    return body();
+    // Awaited inside the try, so an async body's work happens before the scope
+    // is popped. Returning the promise unawaited would close the scope at the
+    // return statement and capture nothing.
+    return await body();
   } finally {
     const error = await device.popErrorScope();
     if (error) {
@@ -381,19 +384,15 @@ describe("frame generator", () => {
     installTime: InstallTime = InstallTime.BeforeConfigure,
   ): Promise<{ color: Float32Array; texture: Float32Array; weight: Float32Array }> {
     const generator = new FrameGenerator({ device: harness.device });
-    const install = () => {
-      if (neuralWeights) {
-        generator.installNeuralBlendWeight(neuralWeights);
+    const install = async (at: InstallTime) => {
+      if (neuralWeights && installTime === at) {
+        await checked(harness, () => generator.installNeuralBlendWeight(neuralWeights));
       }
     };
 
-    if (installTime === InstallTime.BeforeConfigure) {
-      install();
-    }
+    await install(InstallTime.BeforeConfigure);
     await checked(harness, () => generator.configure({ ...PROJECTION, renderWidth: WIDTH, renderHeight: HEIGHT }));
-    if (installTime === InstallTime.AfterConfigure) {
-      install();
-    }
+    await install(InstallTime.AfterConfigure);
 
     let texture!: GPUTexture;
     for (let frame = 0; frame < SETTLED_FRAMES; frame++) {
@@ -416,24 +415,76 @@ describe("frame generator", () => {
   it("lands a uniform translation exactly halfway between the two frames", async () => {
     const { color, texture } = await generate(translationInputs());
 
-    let worst = 0;
+    let worstRamp = 0;
     let worstTexel = 0;
+    let worstNoise = 0;
+    let crossfadeDistance = 0;
     for (let y = 0; y < HEIGHT; y++) {
       for (let x = 0; x < WIDTH; x++) {
         const index = (y * WIDTH + x) * 4;
-        // Half of a two-pixel step, on a ramp: the midpoint of the two sources.
-        const expected = (x - SHIFT_PIXELS / 2) / WIDTH;
-        worst = Math.max(worst, Math.abs(color[index] - expected));
-        worstTexel = Math.max(worstTexel, Math.abs(texture[index] - expected));
+        // Half of a two-pixel step: the midpoint of the two sources.
+        const warpedRamp = (x - SHIFT_PIXELS / 2) / WIDTH;
+        worstRamp = Math.max(worstRamp, Math.abs(color[index] - warpedRamp));
+        worstTexel = Math.max(worstTexel, Math.abs(texture[index] - warpedRamp));
+
+        // The ramp alone cannot tell a warp from a crossfade: averaging two
+        // linear ramps offset by +a and -a gives the same value for every a,
+        // so a pipeline that did no warping at all would satisfy the two
+        // assertions above. The noise channel is what discriminates.
+        const warpedNoise = noise(x - SHIFT_PIXELS / 2, y);
+        const crossfade = (noise(x, y) + noise(x - SHIFT_PIXELS, y)) / 2;
+        worstNoise = Math.max(worstNoise, Math.abs(color[index + 1] - warpedNoise));
+        crossfadeDistance += Math.abs(warpedNoise - crossfade);
+
         expect([x, y, color[index + 3]]).toEqual([x, y, 1]);
       }
     }
 
-    expect(worst).toBeLessThan(1e-3);
+    expect(worstRamp).toBeLessThan(1e-3);
+    expect(worstNoise).toBeLessThan(1e-3);
     expect(color.every(Number.isFinite)).toBe(true);
     // The texture is the same frame at half the mantissa, so it only has to
     // agree to f16 precision over the 0..1 range this fixture spans.
     expect(worstTexel).toBeLessThan(1e-3);
+    // ...and the crossfade the noise assertion rules out is not a near miss.
+    expect(crossfadeDistance / PIXELS).toBeGreaterThan(0.1);
+  });
+
+  // The optical flow field only ever corroborates the game motion vectors in
+  // the blend's scoring, so a scene where the game vectors are already correct
+  // cannot tell a working handoff from a broken one. Zeroing them is what makes
+  // the optical flow the only thing carrying the motion.
+  it("carries the motion through the optical flow when the game vectors are blank", async () => {
+    // A whole 8x8 block, so the flow grid gets a clean unambiguous vector.
+    const FLOW_SHIFT = 8;
+    const noiseFrame = (shift: number) =>
+      texture((x, y) => {
+        const value = noise(x - shift, y);
+        return [value, value, value, 1];
+      });
+
+    const { color } = await generate({
+      previousColor: noiseFrame(0),
+      currentColor: noiseFrame(FLOW_SHIFT),
+      depth: texture(() => [0.5, 0, 0, 1]),
+      motionVectors: texture(() => [0, 0, 0, 1]),
+    });
+
+    // Measured against the frame a pipeline with no motion at all would emit.
+    // Compared as a mean rather than a worst case: the optical flow moves the
+    // blend off the crossfade over the frame, it does not reproduce the warp.
+    let departure = 0;
+    let samples = 0;
+    for (let y = 8; y < HEIGHT - 8; y++) {
+      for (let x = 16; x < WIDTH - 16; x++) {
+        const crossfade = (noise(x, y) + noise(x - FLOW_SHIFT, y)) / 2;
+        departure += Math.abs(color[(y * WIDTH + x) * 4] - crossfade);
+        samples++;
+      }
+    }
+
+    expect(color.every(Number.isFinite)).toBe(true);
+    expect(departure / samples).toBeGreaterThan(0.08);
   });
 
   it("hands back a texture at a width no buffer copy could have filled", async () => {
@@ -445,18 +496,24 @@ describe("frame generator", () => {
       generator.configure({ ...PROJECTION, renderWidth: width, renderHeight: height }),
     );
 
-    const flat = (value: readonly [number, number, number, number]) => {
+    const oddTexture = (valueAt: (x: number, y: number) => readonly [number, number, number, number]) => {
       const texels = new Float32Array(width * height * 4);
-      for (let i = 0; i < width * height; i++) {
-        texels.set(value, i * 4);
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          texels.set(valueAt(x, y), (y * width + x) * 4);
+        }
       }
       return harness.createTexture(width, height, texels).createView();
     };
+    // Varying in both axes, and not symmetric between them, so a transposed or
+    // otherwise permuted index in the blit cannot reproduce it. A flat colour
+    // would pass any permutation.
+    const scene = oddTexture((x, y) => [x / width, y / height, ((x * y) % 17) / 17, 1]);
     const inputs = {
-      currentColor: flat([0.25, 0.5, 0.75, 1]),
-      previousColor: flat([0.25, 0.5, 0.75, 1]),
-      depth: flat([0.5, 0, 0, 1]),
-      motionVectors: flat([0, 0, 0, 1]),
+      currentColor: scene,
+      previousColor: scene,
+      depth: oddTexture(() => [0.5, 0, 0, 1]),
+      motionVectors: oddTexture(() => [0, 0, 0, 1]),
     };
 
     let texture!: GPUTexture;
@@ -467,13 +524,26 @@ describe("frame generator", () => {
       });
     }
     const texels = await readTexture(texture);
+    const buffer = new Float32Array(
+      await harness.readBuffer(generator.interpolatedColor, width * height * 16),
+    );
     generator.destroy();
 
     expect([texture.width, texture.height]).toEqual([width, height]);
-    for (let i = 0; i < width * height; i++) {
-      expect([i, [texels[i * 4], texels[i * 4 + 1], texels[i * 4 + 2], texels[i * 4 + 3]]])
-        .toEqual([i, [0.25, 0.5, 0.75, 1]]);
+
+    // The blit is the only thing between these two, so comparing them texel for
+    // texel isolates it from the rest of the pipeline.
+    let worst = 0;
+    let spread = 0;
+    for (let i = 0; i < width * height * 4; i++) {
+      worst = Math.max(worst, Math.abs(texels[i] - buffer[i]));
+      spread = Math.max(spread, Math.abs(buffer[i] - buffer[0]));
     }
+
+    // f16 has ~3 decimal digits over this range.
+    expect(worst).toBeLessThan(1e-3);
+    // The comparison above only discriminates while the content varies.
+    expect(spread).toBeGreaterThan(0.5);
   });
 
   it("dispatches the neural writer in place of the classical one", async () => {
