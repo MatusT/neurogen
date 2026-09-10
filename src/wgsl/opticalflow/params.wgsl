@@ -16,19 +16,16 @@
 //   opticalFlowValidity    : array<u32>, same grid and indexing as the vector
 //                            field. 1 where the cell's winning block match was
 //                            close enough to trust, 0 otherwise. Without it a
-//                            zero vector is ambiguous three ways — scene-change
-//                            reset, a block confidently judged stationary, and
-//                            a cell the search never reached — and only the
-//                            middle one is usable motion. Caveat: it scores the
-//                            match residual, so a featureless cell reads valid
-//                            even though its vector is arbitrary.
+//                            zero vector is ambiguous: a scene-change reset and
+//                            a block confidently judged stationary look
+//                            identical, and only the second is usable motion.
+//                            Caveat: it scores the match residual, so a
+//                            featureless cell reads valid even though its
+//                            vector is arbitrary.
 //   sceneChangeDetected    : OpticalFlowSceneChange, 0 or 1 for this frame.
 //
-// The search covers a whole tile per workgroup, so at some resolutions its
-// dispatch stops one cell short of the flow grid. The orchestration must clear
-// the validity buffer the search writes into before each of its dispatches,
-// which is what makes "never reached" read as 0 rather than as last frame's
-// verdict.
+// Every cell of both outputs is written every frame, so neither needs clearing
+// between frames.
 //
 // Reduced v1 scope: pyramidLevelCount is 2, where AMD runs 7 levels.
 
