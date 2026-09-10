@@ -53,7 +53,7 @@ const MOTION_FIELD_WARMUP_FRAMES: u32 = 10u;
 
 fn loadGameFieldMv(uv: vec2<f32>) -> FiVectorFieldEntry {
     let pos = vec2<i32>(uv * vec2<f32>(params.renderSize));
-    if (!fiInBounds(pos, params.renderSize)) { return fiNewVectorFieldEntry(); }
+    if (!fiInBounds(pos, params.renderSize)) { return FiVectorFieldEntry(); }
 
     let index = fiFlatIndex(pos, params.renderSize) * 2u;
     var entry = fiUnpackVectorField(vec2<u32>(gameMotionVectorField[index], gameMotionVectorField[index + 1u]));
@@ -69,7 +69,7 @@ fn sampleOpticalFlowFieldMv(uv: vec2<f32>) -> FiVectorFieldEntry {
     let gridSize = fiOpticalFlowGridSize();
     let bilinear = fiBilinear(uv, gridSize);
 
-    var entry = fiNewVectorFieldEntry();
+    var entry: FiVectorFieldEntry;
     var weightSum = 0.0;
     for (var i = 0; i < 4; i++) {
         let samplePos = bilinear.basePos + fiBilinearOffset(i);

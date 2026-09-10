@@ -46,6 +46,9 @@ fn findNearestDepth(pos: vec2<i32>) -> NearestDepth {
 
     for (var y = -1; y <= 1; y++) {
         for (var x = -1; x <= 1; x++) {
+            // The centre tap is already loaded above.
+            if (x == 0 && y == 0) { continue; }
+
             let samplePos = pos + vec2<i32>(x, y);
             // An out-of-range textureLoad reads zero, which is the near plane
             // and would win every comparison — check before, not after.

@@ -36,7 +36,6 @@ const FULL_PRIORITY_VELOCITY_FRACTION: f32 = 0.05;
 // Sharpens the agreement weighting so a tap pointing the neighbourhood's way
 // dominates one that merely does not disagree.
 const DIRECTION_AGREEMENT_EXPONENT: f32 = 1.25;
-const LUMA_BLACK_FLOOR: f32 = 0.001;
 
 fn loadFlowUv(pos: vec2<i32>, gridSize: vec2<i32>) -> vec2<f32> {
     let index = fiFlatIndex(pos, gridSize);
@@ -120,12 +119,7 @@ fn main(@builtin(global_invocation_id) globalId: vec3<u32>) {
     if (highPriority == 0u) { return; }
 
     let uv = (vec2<f32>(pos) + 0.5) / vec2<f32>(gridSize);
-    let reprojectedUv = uv + motionVector;
-    let previousLuma = LUMA_BLACK_FLOOR + fiRawRgbToLuminance(fiSampleColorClamped(previousColor, reprojectedUv, params.renderSize));
-    let currentLuma = LUMA_BLACK_FLOOR + fiRawRgbToLuminance(fiSampleColorClamped(currentColor, uv, params.renderSize));
-
-    let lowPriority = u32(round(fiMinDividedByMax(previousLuma, currentLuma) * f32(MV_FIELD_PRIORITY_LOW_MAX)))
-        * u32(fiIsUvInside(reprojectedUv));
+    let lowPriority = fiColorAgreementPriority(currentColor, previousColor, uv, motionVector);
 
     let halfMotionVector = motionVector * 0.5;
     let packed = fiPackVectorField(MV_FIELD_PRIMARY, highPriority, lowPriority, halfMotionVector);

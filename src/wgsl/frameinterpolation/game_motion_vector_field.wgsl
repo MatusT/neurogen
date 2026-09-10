@@ -31,8 +31,6 @@ const RECONSTRUCTED_DEPTH_WEIGHT_THRESHOLD: f32 = FI_EPSILON;
 const SECONDARY_MAX_PRIMARY_HITS: u32 = 3u;
 // Diagonal of the UV square: no secondary trail can usefully be longer.
 const SECONDARY_MAX_UV_DISTANCE: f32 = 0.70710678;
-// Keeps the luma ratio meaningful where both frames are near black.
-const LUMA_BLACK_FLOOR: f32 = 0.001;
 // AMD's depth compression exponent — a cube root, so distant surfaces still
 // separate from each other instead of all saturating to the same priority.
 const DEPTH_PRIORITY_EXPONENT: f32 = 0.33;
@@ -54,18 +52,6 @@ fn updateGameField(pos: vec2<i32>, packed: vec2<u32>) -> u32 {
     let previousY = atomicMax(&gameMotionVectorField[index + 1u], packed.y);
 
     return max(previousX, previousY);
-}
-
-// How well this pixel's colour survives its own reprojection — a vector that
-// lands on a differently lit pixel is the weaker candidate when two entries tie
-// on depth.
-fn colorAgreementPriority(uv: vec2<f32>, motionVector: vec2<f32>) -> u32 {
-    let reprojectedUv = uv + motionVector;
-    let previousLuma = LUMA_BLACK_FLOOR + fiRawRgbToLuminance(fiSampleColorClamped(previousColor, reprojectedUv, params.renderSize));
-    let currentLuma = LUMA_BLACK_FLOOR + fiRawRgbToLuminance(fiSampleColorClamped(currentColor, uv, params.renderSize));
-
-    let agreement = fiMinDividedByMax(previousLuma, currentLuma);
-    return u32(round(agreement * f32(MV_FIELD_PRIORITY_LOW_MAX))) * u32(fiIsUvInside(reprojectedUv));
 }
 
 // Secondary vectors trail backwards along the motion from the primary landing
@@ -99,10 +85,10 @@ fn writeSecondaryVectors(interpolatedUv: vec2<f32>, motionVector: vec2<f32>, hal
 }
 
 // The interpolated frame's depth, by the same scatter the motion vectors use:
-// half the motion vector, nearest depth wins.
-fn reconstructInterpolatedDepth(uv: vec2<f32>, depth: f32, halfMotionVector: vec2<f32>) {
-    let bilinear = fiBilinear(uv + halfMotionVector, params.renderSize);
-
+// half the motion vector, nearest depth wins. `bilinear` is the caller's own
+// `fiBilinear(uv + halfMotionVector, ...)` — same UV as this pass needs, so
+// it's passed in rather than recomputed.
+fn reconstructInterpolatedDepth(bilinear: FiBilinear, depth: f32) {
     for (var i = 0; i < 4; i++) {
         if (bilinear.weights[i] <= RECONSTRUCTED_DEPTH_WEIGHT_THRESHOLD) { continue; }
 
@@ -130,7 +116,7 @@ fn main(@builtin(global_invocation_id) globalId: vec3<u32>) {
     let interpolatedUv = uv + halfMotionVector;
 
     let highPriority = priorityFromViewSpaceDepth(fiViewSpaceDepth(depth));
-    let lowPriority = colorAgreementPriority(uv, motionVector);
+    let lowPriority = fiColorAgreementPriority(currentColor, previousColor, uv, motionVector);
     let packedPrimary = fiPackVectorField(MV_FIELD_PRIMARY, highPriority, lowPriority, halfMotionVector);
 
     let bilinear = fiBilinear(interpolatedUv, params.renderSize);
@@ -141,7 +127,7 @@ fn main(@builtin(global_invocation_id) globalId: vec3<u32>) {
         updateGameField(samplePos, packedPrimary);
     }
 
-    reconstructInterpolatedDepth(uv, depth, halfMotionVector);
+    reconstructInterpolatedDepth(bilinear, depth);
 
     // normalize() of a zero vector is undefined, and a stationary pixel has no
     // trail to leave behind anyway.

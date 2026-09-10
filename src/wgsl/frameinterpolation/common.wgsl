@@ -172,19 +172,6 @@ struct FiVectorFieldEntry {
     posOutside: bool,
 }
 
-fn fiNewVectorFieldEntry() -> FiVectorFieldEntry {
-    var entry: FiVectorFieldEntry;
-    entry.motionVector = vec2<f32>(0.0);
-    entry.highPriorityFactor = 0.0;
-    entry.lowPriorityFactor = 0.0;
-    entry.valid = false;
-    entry.primary = false;
-    entry.velocity = 0.0;
-    entry.negOutside = false;
-    entry.posOutside = false;
-    return entry;
-}
-
 fn fiPackedEntryIsPrimary(packed: u32) -> bool {
     return (packed & MV_FIELD_PRIMARY_BIT) != 0u;
 }
@@ -201,7 +188,7 @@ fn fiPackVectorField(kind: u32, highPriority: u32, lowPriority: u32, motionVecto
 }
 
 fn fiUnpackVectorField(packed: vec2<u32>) -> FiVectorFieldEntry {
-    var entry = fiNewVectorFieldEntry();
+    var entry: FiVectorFieldEntry;
 
     entry.highPriorityFactor = f32((packed.x >> MV_FIELD_PRIORITY_HIGH_OFFSET) & MV_FIELD_PRIORITY_HIGH_MAX)
         / f32(MV_FIELD_PRIORITY_HIGH_MAX);
@@ -273,6 +260,28 @@ fn fiRawRgbToLuminance(rawRgb: vec3<f32>) -> f32 {
     }
 
     return dot(linearRgb, REC709_LUMA_WEIGHTS);
+}
+
+// Added to sampled luminance before scoring how well two samples agree, so a
+// black pixel's luminance is never exactly zero and can't trigger a
+// divide-by-zero in fiMinDividedByMax.
+const LUMA_BLACK_FLOOR: f32 = 0.001;
+
+// How well a pixel's colour survives its own reprojection — a vector that
+// lands on a differently lit pixel is the weaker candidate when two entries
+// tie on depth. Shared by the game and optical-flow vector-field passes.
+fn fiColorAgreementPriority(
+    currentColor: texture_2d<f32>,
+    previousColor: texture_2d<f32>,
+    uv: vec2<f32>,
+    motionVector: vec2<f32>,
+) -> u32 {
+    let reprojectedUv = uv + motionVector;
+    let previousLuma = LUMA_BLACK_FLOOR + fiRawRgbToLuminance(fiSampleColorClamped(previousColor, reprojectedUv, params.renderSize));
+    let currentLuma = LUMA_BLACK_FLOOR + fiRawRgbToLuminance(fiSampleColorClamped(currentColor, uv, params.renderSize));
+
+    let agreement = fiMinDividedByMax(previousLuma, currentLuma);
+    return u32(round(agreement * f32(MV_FIELD_PRIORITY_LOW_MAX))) * u32(fiIsUvInside(reprojectedUv));
 }
 
 //

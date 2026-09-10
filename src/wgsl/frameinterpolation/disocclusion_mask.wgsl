@@ -46,7 +46,7 @@ fn loadEstimatedDepth(estimate: u32, pos: vec2<i32>) -> f32 {
 
 fn loadGameFieldMv(uv: vec2<f32>) -> FiVectorFieldEntry {
     let pos = vec2<i32>(uv * vec2<f32>(params.renderSize));
-    if (!fiInBounds(pos, params.renderSize)) { return fiNewVectorFieldEntry(); }
+    if (!fiInBounds(pos, params.renderSize)) { return FiVectorFieldEntry(); }
 
     let index = fiFlatIndex(pos, params.renderSize) * 2u;
     var entry = fiUnpackVectorField(vec2<u32>(gameMotionVectorField[index], gameMotionVectorField[index + 1u]));
