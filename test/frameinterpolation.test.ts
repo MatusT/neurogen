@@ -2,6 +2,8 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { createGpuHarness, type GpuHarness } from "./gpu-harness.js";
 import setupWgsl from "../src/wgsl/generated/frameinterpolation/setup.wgsl.js";
 import reconstructAndDilateWgsl from "../src/wgsl/generated/frameinterpolation/reconstruct_and_dilate.wgsl.js";
+import gameMotionVectorFieldWgsl from "../src/wgsl/generated/frameinterpolation/game_motion_vector_field.wgsl.js";
+import opticalFlowVectorFieldWgsl from "../src/wgsl/generated/frameinterpolation/optical_flow_vector_field.wgsl.js";
 
 // Mirrors FrameInterpolationParams in src/wgsl/frameinterpolation/params.wgsl.
 // Padded to 48 bytes; the struct itself is 40.
@@ -59,6 +61,37 @@ function scalarTexture(
     }
   }
   return harness.createTexture(width, height, texels);
+}
+
+// Decodes one motion-vector-field cell, mirroring fiUnpackVectorField in
+// src/wgsl/frameinterpolation/common.wgsl.
+function unpackHalf(bits: number): number {
+  const sign = bits >>> 15 ? -1 : 1;
+  const exponent = (bits >>> 10) & 0x1f;
+  const mantissa = bits & 0x3ff;
+  if (exponent === 0) return sign * mantissa * 2 ** -24;
+  return sign * (mantissa + 1024) * 2 ** (exponent - 25);
+}
+
+interface VectorFieldEntry {
+  motionVector: [number, number];
+  highPriority: number;
+  lowPriority: number;
+  primary: boolean;
+  valid: boolean;
+}
+
+function unpackVectorField(field: Uint32Array, index: number): VectorFieldEntry {
+  const packedX = field[index * 2];
+  const packedY = field[index * 2 + 1];
+  const highPriority = (packedX >>> 21) & 0x3ff;
+  return {
+    motionVector: [unpackHalf(packedX & 0xffff), unpackHalf(packedY & 0xffff)],
+    highPriority,
+    lowPriority: (packedX >>> 16) & 0x1f,
+    primary: (packedX & 0x80000000) !== 0,
+    valid: highPriority > 0,
+  };
 }
 
 function vec2Texture(
@@ -245,6 +278,184 @@ describe("frame interpolation", () => {
       );
 
       expect(result.depthPrevious[3]).toBeCloseTo(0.25, 5);
+    });
+  });
+
+  describe("game motion vector field", () => {
+    async function runGameMotionVectorField(
+      renderSize: [number, number],
+      depthAt: (x: number, y: number) => number,
+      motionVectorPixelsAt: (x: number, y: number) => [number, number],
+    ) {
+      const [width, height] = renderSize;
+      const pixels = width * height;
+
+      const dilatedDepthData = new Float32Array(pixels);
+      const dilatedMotionVectorData = new Float32Array(pixels * 2);
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const index = y * width + x;
+          dilatedDepthData[index] = depthAt(x, y);
+          const [vx, vy] = motionVectorPixelsAt(x, y);
+          dilatedMotionVectorData[index * 2] = vx / width;
+          dilatedMotionVectorData[index * 2 + 1] = vy / height;
+        }
+      }
+
+      const paramsBuffer = harness.createUniformBuffer(frameInterpolationParams({ renderSize }));
+      const flatColor = scalarTexture(harness, renderSize, () => 0.5);
+      const dilatedDepth = harness.createStorageBuffer(dilatedDepthData);
+      const dilatedMotionVectors = harness.createStorageBuffer(dilatedMotionVectorData);
+      const gameField = harness.createStorageBuffer(new Uint32Array(pixels * 2));
+      const depthInterpolated = harness.createStorageBuffer(
+        new Uint32Array(pixels).fill(FAR_SENTINEL_BITS),
+      );
+
+      const pipeline = harness.createComputePipeline(gameMotionVectorFieldWgsl);
+      await harness.dispatch(
+        pipeline,
+        [
+          { buffer: paramsBuffer },
+          { buffer: dilatedDepth },
+          { buffer: dilatedMotionVectors },
+          flatColor.createView(),
+          flatColor.createView(),
+          { buffer: gameField },
+          { buffer: depthInterpolated },
+        ],
+        [groupCount(width), groupCount(height)],
+      );
+
+      return {
+        gameField: new Uint32Array(await harness.readBuffer(gameField, pixels * 8)),
+        depthInterpolated: new Float32Array(await harness.readBuffer(depthInterpolated, pixels * 4)),
+      };
+    }
+
+    it("fills every cell with a stationary primary vector when nothing moves", async () => {
+      const renderSize: [number, number] = [8, 4];
+      const result = await runGameMotionVectorField(renderSize, () => 0.5, () => [0, 0]);
+
+      for (let index = 0; index < 8 * 4; index++) {
+        const entry = unpackVectorField(result.gameField, index);
+        expect(entry.valid).toBe(true);
+        expect(entry.primary).toBe(true);
+        expect(entry.motionVector).toEqual([0, 0]);
+        // Identical current and previous colour: the luma ratio is exactly 1.
+        expect(entry.lowPriority).toBe(31);
+      }
+    });
+
+    it("gives a nearer surface a higher depth priority than a farther one", async () => {
+      const renderSize: [number, number] = [8, 4];
+      const result = await runGameMotionVectorField(
+        renderSize,
+        (x) => (x < 4 ? 0.2 : 0.9),
+        () => [0, 0],
+      );
+
+      const near = unpackVectorField(result.gameField, 1).highPriority;
+      const far = unpackVectorField(result.gameField, 6).highPriority;
+      expect(near).toBeGreaterThan(far);
+      expect(far).toBeGreaterThan(0);
+    });
+
+    it("scatters half the motion vector to the interpolated frame's position", async () => {
+      const renderSize: [number, number] = [8, 4];
+      // 4px of motion, so entries land 2px right of their source and the two
+      // leftmost columns have nothing reaching them. The half vector is 0.25 in
+      // UV, exactly representable as a half float.
+      const result = await runGameMotionVectorField(renderSize, () => 0.5, () => [4, 0]);
+
+      for (let y = 0; y < 4; y++) {
+        for (let x = 0; x < 8; x++) {
+          const entry = unpackVectorField(result.gameField, y * 8 + x);
+          expect(entry.valid).toBe(x >= 2);
+          if (!entry.valid) continue;
+
+          expect(entry.motionVector[0]).toBeCloseTo(0.25, 6);
+          expect(entry.motionVector[1]).toBeCloseTo(0, 6);
+        }
+      }
+    });
+
+    it("reconstructs the interpolated frame's depth at the half-vector position", async () => {
+      const renderSize: [number, number] = [8, 4];
+      const result = await runGameMotionVectorField(renderSize, () => 0.5, () => [4, 0]);
+
+      for (let y = 0; y < 4; y++) {
+        for (let x = 0; x < 8; x++) {
+          expect(result.depthInterpolated[y * 8 + x]).toBeCloseTo(x < 2 ? 1 : 0.5, 5);
+        }
+      }
+    });
+  });
+
+  describe("optical flow vector field", () => {
+    async function runOpticalFlowVectorField(
+      renderSize: [number, number],
+      flowPixelsAt: (x: number, y: number) => [number, number],
+      validAt: (x: number, y: number) => number,
+    ) {
+      const [width, height] = renderSize;
+      const [gridWidth, gridHeight] = opticalFlowGridSize(renderSize);
+      const cells = gridWidth * gridHeight;
+
+      const flowData = new Int32Array(cells * 2);
+      const validityData = new Uint32Array(cells);
+      for (let y = 0; y < gridHeight; y++) {
+        for (let x = 0; x < gridWidth; x++) {
+          const [vx, vy] = flowPixelsAt(x, y);
+          flowData[(y * gridWidth + x) * 2] = vx;
+          flowData[(y * gridWidth + x) * 2 + 1] = vy;
+          validityData[y * gridWidth + x] = validAt(x, y);
+        }
+      }
+
+      const paramsBuffer = harness.createUniformBuffer(frameInterpolationParams({ renderSize }));
+      const flatColor = scalarTexture(harness, renderSize, () => 0.5);
+      const flow = harness.createStorageBuffer(flowData);
+      const validity = harness.createStorageBuffer(validityData);
+      const field = harness.createStorageBuffer(new Uint32Array(cells * 2));
+
+      const pipeline = harness.createComputePipeline(opticalFlowVectorFieldWgsl);
+      await harness.dispatch(
+        pipeline,
+        [
+          { buffer: paramsBuffer },
+          { buffer: flow },
+          { buffer: validity },
+          flatColor.createView(),
+          flatColor.createView(),
+          { buffer: field },
+        ],
+        [groupCount(gridWidth), groupCount(gridHeight)],
+      );
+
+      return new Uint32Array(await harness.readBuffer(field, cells * 8));
+    }
+
+    it("scatters a uniform flow as a full-priority primary vector", async () => {
+      const renderSize: [number, number] = [64, 32];
+      // 16px of flow across an 8x4 cell grid: the half vector is 0.125 in UV,
+      // which is one whole cell, so entries land exactly one cell to the right.
+      const field = await runOpticalFlowVectorField(renderSize, () => [16, 0], () => 1);
+
+      const entry = unpackVectorField(field, 1 * 8 + 4);
+      expect(entry.primary).toBe(true);
+      expect(entry.highPriority).toBe(1023);
+      expect(entry.motionVector[0]).toBeCloseTo(0.125, 6);
+      expect(entry.motionVector[1]).toBeCloseTo(0, 6);
+
+      // Nothing reprojects into the leftmost column.
+      expect(unpackVectorField(field, 1 * 8 + 0).valid).toBe(false);
+    });
+
+    it("ignores cells Task 2 marked invalid", async () => {
+      const renderSize: [number, number] = [64, 32];
+      const field = await runOpticalFlowVectorField(renderSize, () => [16, 0], () => 0);
+
+      expect(Array.from(field).every((entry) => entry === 0)).toBe(true);
     });
   });
 });
