@@ -8,6 +8,13 @@
 // Runs after the search at every level; at level 0 its destination is the
 // module's opticalFlowVectorField and opticalFlowValidity output.
 //
+// Taps off the edge of the grid stand in as a zero vector, as AMD's texture
+// reads did. One deviation: they now lose ties to real taps. AMD broke ties on
+// tap index alone, which over a stationary border cell hands the win to the
+// fabricated tap — harmless when only a vector is emitted, since both are
+// zero, but it would report the fabricated tap's validity and mark the whole
+// left and top borders unusable.
+//
 // Dispatch: (ceil(flowW/16), ceil(flowH/4)) for the level's flow grid.
 
 // @import ./common.wgsl
@@ -19,9 +26,10 @@
 @group(0) @binding(4) var<storage, read_write> validityOut: array<u32>;
 
 const FILTER_TAPS: i32 = 9;
-// The winner's index rides in the low nibble so one min() carries both the
-// score and which tap produced it.
-const FILTER_SCORE_SHIFT: u32 = 4u;
+// One min() carries the whole ranking: score first, then whether the tap was
+// real, then its index in the low nibble.
+const FILTER_SCORE_SHIFT: u32 = 5u;
+const FILTER_OOB_SHIFT: u32 = 4u;
 const FILTER_INDEX_MASK: u32 = 0xfu;
 
 @compute @workgroup_size(16, 4)
@@ -32,17 +40,21 @@ fn main(@builtin(global_invocation_id) globalId: vec3<u32>) {
 
     var taps: array<vec2<i32>, FILTER_TAPS>;
     var tapValidity: array<u32, FILTER_TAPS>;
+    var tapOutOfBounds: array<u32, FILTER_TAPS>;
     var tap = 0;
     for (var x = -1; x < 2; x++) {
         for (var y = -1; y < 2; y++) {
             let neighbour = pos + vec2<i32>(x, y);
-            if (ofInBounds(neighbour, size)) {
+            let outside = !ofInBounds(neighbour, size);
+            tapOutOfBounds[tap] = u32(outside);
+
+            if (outside) {
+                taps[tap] = vec2<i32>(0);
+                tapValidity[tap] = 0u;
+            } else {
                 let index = ofFlatIndex(neighbour, size);
                 taps[tap] = flowIn[index];
                 tapValidity[tap] = validityIn[index];
-            } else {
-                taps[tap] = vec2<i32>(0);
-                tapValidity[tap] = 0u;
             }
             tap++;
         }
@@ -56,7 +68,7 @@ fn main(@builtin(global_invocation_id) globalId: vec3<u32>) {
             score += u32(delta.x * delta.x + delta.y * delta.y);
         }
 
-        best = min((score << FILTER_SCORE_SHIFT) | u32(i), best);
+        best = min((score << FILTER_SCORE_SHIFT) | (tapOutOfBounds[i] << FILTER_OOB_SHIFT) | u32(i), best);
     }
 
     // The winner is a neighbour's vector, not this cell's, so its validity has
