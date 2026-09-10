@@ -51,10 +51,7 @@ export interface FrameGeneratorConfig {
   luminance?: LuminanceRange;
 }
 
-// All at render resolution. `depth` is .x, standard 0 = near / 1 = far;
-// `motionVectors` is .xy, whole pixels from a current-frame pixel to where it
-// was in the previous frame.
-export interface FrameGeneratorInputs extends FrameInputs {}
+export type FrameGeneratorInputs = FrameInputs;
 
 export class FrameGenerator {
   readonly device: GPUDevice;

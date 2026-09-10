@@ -32,7 +32,15 @@ import {
   pyramidTexelCount,
   type Size,
 } from "./geometry.js";
-import { bindGroup, buf, type ComputeStep, encodeSteps, pipeline, storageBuffer, uniformBuffer } from "./gpu.js";
+import {
+  bindGroup,
+  buf,
+  type ComputeStep,
+  encodeSteps,
+  pipeline,
+  storageBuffer,
+  uniformBuffer,
+} from "./gpu.js";
 import { neuralBlendWeightStep } from "./neuralBlendWeight.js";
 import {
   History,
@@ -54,10 +62,16 @@ export interface FrameInterpolationSettings {
   luminance: LuminanceRange;
 }
 
+// All at render resolution, in the encodings this module's input contract
+// names.
 export interface FrameInputs {
   currentColor: GPUTextureView;
   previousColor: GPUTextureView;
+  // .x is device depth, standard 0 = near / 1 = far, from a finite perspective
+  // projection.
   depth: GPUTextureView;
+  // .xy is the displacement in whole render-resolution pixels from a pixel in
+  // the current frame to where it was in the previous frame.
   motionVectors: GPUTextureView;
 }
 

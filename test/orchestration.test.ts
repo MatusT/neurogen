@@ -368,15 +368,32 @@ describe("frame generator", () => {
     return texels;
   }
 
+  // An asset may arrive from a fetch either side of configure(), so both orders
+  // have to reach the same pass.
+  enum InstallTime {
+    BeforeConfigure,
+    AfterConfigure,
+  }
+
   async function generate(
     inputs: ReturnType<typeof translationInputs>,
     neuralWeights?: NeuralNetworkWeights,
+    installTime: InstallTime = InstallTime.BeforeConfigure,
   ): Promise<{ color: Float32Array; texture: Float32Array; weight: Float32Array }> {
     const generator = new FrameGenerator({ device: harness.device });
-    if (neuralWeights) {
-      generator.installNeuralBlendWeight(neuralWeights);
+    const install = () => {
+      if (neuralWeights) {
+        generator.installNeuralBlendWeight(neuralWeights);
+      }
+    };
+
+    if (installTime === InstallTime.BeforeConfigure) {
+      install();
     }
     await checked(harness, () => generator.configure({ ...PROJECTION, renderWidth: WIDTH, renderHeight: HEIGHT }));
+    if (installTime === InstallTime.AfterConfigure) {
+      install();
+    }
 
     let texture!: GPUTexture;
     for (let frame = 0; frame < SETTLED_FRAMES; frame++) {
@@ -471,6 +488,9 @@ describe("frame generator", () => {
     expect(classical.weight.every((weight) => weight === 0)).toBe(true);
     expect(Math.max(...neural.weight)).toBeGreaterThan(0);
     expect(neural.color.every(Number.isFinite)).toBe(true);
+
+    const installedLate = await generate(inputs, blendWeightAsset, InstallTime.AfterConfigure);
+    expect([...installedLate.weight]).toEqual([...neural.weight]);
   });
 
   it("rejects an asset the kernel's hard-coded layer offsets do not fit", () => {
