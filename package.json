@@ -9,6 +9,7 @@
   "scripts": {
     "build": "npm run wgsl:validate && tsc -p tsconfig.json && tsc -p tsconfig.test.json",
     "wgsl:validate": "node scripts/validate-wgsl.mjs",
+    "train:neural": "vite-node scripts/train-blend-mlp.ts",
     "test": "vitest run",
     "demo": "vite demo"
   },
