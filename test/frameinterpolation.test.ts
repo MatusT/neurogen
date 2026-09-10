@@ -739,6 +739,152 @@ describe("frame interpolation", () => {
     });
   });
 
+  describe("inpainting", () => {
+    const RENDER_SIZE: [number, number] = [16, 16];
+    const SURROUND: [number, number, number] = [0.5, 0.25, 0.75];
+    const HOLE_MIN = 6;
+    const HOLE_MAX = 10;
+
+    const isHole = (x: number, y: number) =>
+      x >= HOLE_MIN && x < HOLE_MAX && y >= HOLE_MIN && y < HOLE_MAX;
+
+    // A frame of one flat colour with a black square punched out of it, and a
+    // blend weight marking exactly that square. Anything the inpainting
+    // produces has to be the surround colour, because it is the only colour any
+    // covered pixel holds — which also makes a plain box filter visibly wrong.
+    async function runInpainting() {
+      const [width, height] = RENDER_SIZE;
+      const pixels = width * height;
+
+      const colorData = new Float32Array(pixels * 4);
+      const weightData = new Float32Array(pixels);
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const index = y * width + x;
+          weightData[index] = isHole(x, y) ? 1 : 0;
+          const rgb = isHole(x, y) ? [0, 0, 0] : SURROUND;
+          colorData.set([...rgb, 1], index * 4);
+        }
+      }
+
+      const preliminaryColor = harness.createStorageBuffer(colorData);
+      const blendWeight = harness.createStorageBuffer(weightData);
+      const pyramid = harness.createStorageBuffer(
+        new Float32Array(pyramidTexelCount(RENDER_SIZE) * 4),
+      );
+      const interpolatedColor = harness.createStorageBuffer(new Float32Array(pixels * 4));
+      // Any frame but the first, or the scene-cut fallback takes over.
+      const state = harness.createStorageBuffer(new Uint32Array([5]));
+      const currentColor = scalarTexture(harness, RENDER_SIZE, () => 0).createView();
+
+      const pyramidPipeline = harness.createComputePipeline(inpaintingPyramidWgsl);
+      for (let level = 0; level < INPAINTING_MIP_COUNT; level++) {
+        const mipParams = harness.createUniformBuffer(
+          frameInterpolationParams({ renderSize: RENDER_SIZE, inpaintingMipLevel: level }),
+        );
+        await harness.dispatch(
+          pyramidPipeline,
+          [{ buffer: mipParams }, { buffer: preliminaryColor }, { buffer: blendWeight },
+            { buffer: pyramid }],
+          [groupCount(width >> (level + 1)), groupCount(height >> (level + 1))],
+        );
+      }
+
+      await harness.dispatch(
+        harness.createComputePipeline(finalBlendWgsl),
+        [
+          { buffer: harness.createUniformBuffer(frameInterpolationParams({ renderSize: RENDER_SIZE })) },
+          currentColor,
+          { buffer: preliminaryColor },
+          { buffer: blendWeight },
+          { buffer: pyramid },
+          { buffer: interpolatedColor },
+          { buffer: state },
+        ],
+        [groupCount(width), groupCount(height)],
+      );
+
+      return {
+        pyramid: new Float32Array(
+          await harness.readBuffer(pyramid, pyramidTexelCount(RENDER_SIZE) * 16),
+        ),
+        result: new Float32Array(await harness.readBuffer(interpolatedColor, pixels * 16)),
+      };
+    }
+
+    it("weights the pyramid reduction by coverage instead of averaging holes in", async () => {
+      const { pyramid } = await runInpainting();
+
+      // Mip 0 is 8x8. Its texels 3 and 4 in each axis sit wholly inside the
+      // hole and must carry no coverage at all.
+      for (const axisPos of [3, 4]) {
+        expect(Array.from(pyramid.slice((axisPos * 8 + axisPos) * 4, (axisPos * 8 + axisPos) * 4 + 4)))
+          .toEqual([0, 0, 0, 0]);
+      }
+
+      // Texel (2,3) straddles the hole edge: two covered taps, two not. A box
+      // filter would halve the colour; the coverage weighting keeps it whole.
+      const straddling = (3 * 8 + 2) * 4;
+      expect(pyramid[straddling]).toBeCloseTo(SURROUND[0], 6);
+      expect(pyramid[straddling + 1]).toBeCloseTo(SURROUND[1], 6);
+      expect(pyramid[straddling + 3]).toBeGreaterThan(0);
+    });
+
+    it("fills a hole from the surrounding colour and leaves covered pixels alone", async () => {
+      const { result } = await runInpainting();
+
+      for (let y = 0; y < 16; y++) {
+        for (let x = 0; x < 16; x++) {
+          const base = (y * 16 + x) * 4;
+          const actual = [result[base], result[base + 1], result[base + 2]];
+          // Both cases land on the same colour: covered pixels because that is
+          // what they already held, hole pixels because inpainting supplied it.
+          for (let channel = 0; channel < 3; channel++) {
+            expect(actual[channel]).toBeCloseTo(SURROUND[channel], 5);
+          }
+        }
+      }
+    });
+
+    it("passes a pixel through untouched when its blend weight is zero", async () => {
+      // Nothing distinguishes a zero-weight pixel from an inpainted one in the
+      // fixture above, since both end up the surround colour. Give the pyramid
+      // nothing to offer and the covered pixels must still survive.
+      const [width, height] = RENDER_SIZE;
+      const pixels = width * height;
+      const colorData = new Float32Array(pixels * 4);
+      for (let index = 0; index < pixels; index++) {
+        colorData.set([index / pixels, 0.5, 0.25, 1], index * 4);
+      }
+
+      const preliminaryColor = harness.createStorageBuffer(colorData);
+      const blendWeight = harness.createStorageBuffer(new Float32Array(pixels));
+      const pyramid = harness.createStorageBuffer(
+        new Float32Array(pyramidTexelCount(RENDER_SIZE) * 4),
+      );
+      const interpolatedColor = harness.createStorageBuffer(new Float32Array(pixels * 4));
+
+      await harness.dispatch(
+        harness.createComputePipeline(finalBlendWgsl),
+        [
+          { buffer: harness.createUniformBuffer(frameInterpolationParams({ renderSize: RENDER_SIZE })) },
+          scalarTexture(harness, RENDER_SIZE, () => 0).createView(),
+          { buffer: preliminaryColor },
+          { buffer: blendWeight },
+          { buffer: pyramid },
+          { buffer: interpolatedColor },
+          { buffer: harness.createStorageBuffer(new Uint32Array([5])) },
+        ],
+        [groupCount(width), groupCount(height)],
+      );
+
+      const result = new Float32Array(await harness.readBuffer(interpolatedColor, pixels * 16));
+      for (let index = 0; index < pixels; index++) {
+        expect(result[index * 4]).toBeCloseTo(index / pixels, 6);
+      }
+    });
+  });
+
   describe("full pipeline", () => {
     const FLAT_DEPTH = 0.5;
     // No two columns alike, so a one-pixel misalignment shows up, and offset
