@@ -24,8 +24,9 @@
 @group(0) @binding(4) var<storage, read_write> dilatedMotionVectors: array<vec2<f32>>;
 @group(0) @binding(5) var<storage, read_write> reconstructedDepthPrevious: array<atomic<u32>>;
 
-// Below this the reprojection lands back on the source pixel anyway, and
-// scattering it only smears the depth over that pixel's neighbours.
+// Below this the motion is indistinguishable from none, and is snapped to zero
+// so the depth lands squarely on its own pixel instead of being split across a
+// neighbour by a sub-pixel bilinear weight.
 const MIN_REPROJECTION_PIXELS: f32 = 0.1;
 // A tap this weak contributes nothing but would still claim the cell for its
 // depth, since the scatter is a max and carries no weight.
@@ -64,10 +65,17 @@ fn findNearestDepth(pos: vec2<i32>) -> NearestDepth {
 // Push this pixel's depth to every previous-frame pixel its reprojection has
 // bilinear weight in, keeping the nearest depth at each destination.
 fn reconstructPreviousDepth(pos: vec2<i32>, depth: f32, motionVector: vec2<f32>) {
-    if (length(motionVector * vec2<f32>(params.renderSize)) <= MIN_REPROJECTION_PIXELS) { return; }
+    // Sub-pixel motion is zeroed but still scattered — zeroing the vector is
+    // not the same as skipping the write. A stationary pixel has to land its
+    // own depth on its own location, or the far sentinel stays where a
+    // stationary occluder's depth belongs and the disocclusion pass reads
+    // "nothing in front of this pixel": background then warps straight through
+    // anything standing still while the camera moves behind it.
+    let reprojection = motionVector
+        * f32(length(motionVector * vec2<f32>(params.renderSize)) > MIN_REPROJECTION_PIXELS);
 
     let uv = (vec2<f32>(pos) + 0.5) / vec2<f32>(params.renderSize);
-    let bilinear = fiBilinear(uv + motionVector, params.renderSize);
+    let bilinear = fiBilinear(uv + reprojection, params.renderSize);
 
     for (var i = 0; i < 4; i++) {
         if (bilinear.weights[i] <= RECONSTRUCTED_DEPTH_WEIGHT_THRESHOLD) { continue; }

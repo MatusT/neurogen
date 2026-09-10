@@ -443,10 +443,14 @@ describe("frame interpolation", () => {
       }
     });
 
-    it("leaves the reconstructed depth at its sentinel when nothing moves", async () => {
+    it("scatters a stationary pixel's depth onto its own location", async () => {
       const result = await runReconstructAndDilate([4, 4], () => 0.5, () => [0, 0]);
 
-      expect(Array.from(result.depthPrevious).every((depth) => depth === 1)).toBe(true);
+      // Sub-pixel motion is snapped to zero but still written. Leaving the far
+      // sentinel here instead would make a stationary occluder invisible to the
+      // disocclusion pass, which reads this buffer to ask what stood in front
+      // of a pixel in the previous frame.
+      expect(Array.from(result.depthPrevious).every((depth) => depth === 0.5)).toBe(true);
     });
 
     it("scatters depth to the previous-frame position a whole-pixel motion lands on", async () => {
