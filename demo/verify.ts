@@ -2,12 +2,13 @@
 // constant velocity, and the interpolated frame's copy of it measured against
 // the midpoint of the two real frames it was generated from.
 //
-// Seven things have to hold, and only together do they mean anything:
+// Nine things have to hold, and only together do they mean anything:
 //
 //   across    the bar's centroid sits halfway between the two real frames'
 //   shape     it is one bar, not two, and the same width
 //   down      it sits on the same row, at the same height
 //   mass      it carries the same red
+//   found     the box the run detection put it in is where it should be
 //   interior  its pixels match the real frames', box-aligned
 //
 // Each covers a failure the others are blind to. The bar is narrower than its
@@ -132,26 +133,23 @@ export interface MarkerProfile {
 }
 
 interface AxisProfile {
-  centroid: number;
   span: number;
   bars: number;
-  weight: number;
   // The measured window, one cell wider than the bar at each end.
   from: number;
   to: number;
 }
 
-// Where the marker sits along one axis, from that axis's summed profile.
+// Where the marker's bounding box sits along one axis, from that axis's summed
+// profile.
 //
 // The bar is the widest run above half the peak. Strictly above: a warp landing
 // exactly on a half pixel would split its two end columns to half weight each
 // and measure one column narrow, which the current whole-pixel-per-frame
 // velocities never produce but a fractional one could.
 function measureAxis(values: Float32Array): AxisProfile {
-  let total = 0;
   let peak = 0;
   for (const value of values) {
-    total += value;
     peak = Math.max(peak, value);
   }
 
@@ -182,29 +180,34 @@ function measureAxis(values: Float32Array): AxisProfile {
   // what makes the measured position agree with the scene's own transforms
   // rather than sit a fifth of a pixel out, and the same rule runs over all
   // three frames.
-  const from = Math.max(0, bar.from - 1);
-  const to = Math.min(values.length - 1, bar.to + 1);
-
-  let weight = 0;
-  let moment = 0;
-  for (let at = from; at <= to; at++) {
-    weight += values[at];
-    // Pixel centres, so the centroid is in the same continuous coordinates
-    // projectToPixel reports rather than half a pixel to the left of them.
-    moment += values[at] * (at + 0.5);
-  }
-
   return {
-    centroid: weight > 0 ? moment / weight : Number.NaN,
     span: bar.to - bar.from + 1,
     bars: runs.length,
-    weight: total > 0 ? weight : 0,
-    from,
-    to,
+    from: Math.max(0, bar.from - 1),
+    to: Math.min(values.length - 1, bar.to + 1),
   };
 }
 
+// Weighted mean position of a profile, in frame coordinates. Pixel centres, so
+// it is in the same continuous coordinates projectToPixel reports rather than
+// half a pixel to the left of them.
+function centroid(values: Float32Array, offset: number): number {
+  let weight = 0;
+  let moment = 0;
+  for (let at = 0; at < values.length; at++) {
+    weight += values[at];
+    moment += values[at] * (offset + at + 0.5);
+  }
+
+  return weight > 0 ? moment / weight : Number.NaN;
+}
+
 export interface MarkerBox {
+  // Where the half-peak run detection actually found the bar. Unlike the
+  // centroids, which are weighted sums over a whole axis and so move when red
+  // appears anywhere else in the frame, this is the bar's own position.
+  left: number;
+  top: number;
   width: number;
   height: number;
   pixels: Float32Array;
@@ -220,7 +223,12 @@ function crop(
   across: AxisProfile,
   down: AxisProfile,
 ): MarkerBox {
-  const box = { width: across.to - across.from + 1, height: down.to - down.from + 1 };
+  const box = {
+    left: across.from,
+    top: down.from,
+    width: across.to - across.from + 1,
+    height: down.to - down.from + 1,
+  };
   const pixels = new Float32Array(box.width * box.height);
   for (let y = 0; y < box.height; y++) {
     for (let x = 0; x < box.width; x++) {
@@ -256,16 +264,33 @@ export function measureMarker(
 
   const across = measureAxis(columns);
   const down = measureAxis(rows);
+  const bar = crop(red, width, across, down);
+
+  // Taken over the bar's own box rather than over the frame. A profile summed
+  // across the whole frame carries every other red thing in it: the blend's
+  // trail beside the bar drags the row centroid off by pixels on its own, and a
+  // dim patch placed anywhere could be sized to drag it back.
+  const barColumns = new Float32Array(bar.width);
+  const barRows = new Float32Array(bar.height);
+  let mass = 0;
+  for (let y = 0; y < bar.height; y++) {
+    for (let x = 0; x < bar.width; x++) {
+      const value = bar.pixels[y * bar.width + x];
+      barColumns[x] += value;
+      barRows[y] += value;
+      mass += value;
+    }
+  }
 
   return {
-    centroid: across.centroid,
+    centroid: centroid(barColumns, bar.left),
     span: across.span,
     bars: across.bars,
-    rowCentroid: down.centroid,
+    rowCentroid: centroid(barRows, bar.top),
     rowSpan: down.span,
-    mass: across.weight,
-    ghost: total > 0 ? (total - across.weight) / total : 0,
-    bar: crop(red, width, across, down),
+    mass,
+    ghost: total > 0 ? (total - mass) / total : 0,
+    bar,
   };
 }
 
@@ -319,6 +344,7 @@ export function midpointFailures(
 ): string[] {
   const failures: string[] = [];
   const mean = (from: number, to: number) => (from + to) / 2;
+  const centreOf = (from: number, extent: number) => from + extent / 2;
   const report = (wrong: boolean, message: string) => {
     if (wrong) {
       failures.push(message);
@@ -357,6 +383,24 @@ export function midpointFailures(
   report(
     Math.abs(interpolated.mass - mass) > MASS_TOLERANCE_FRACTION * mass,
     `bar carries ${(interpolated.mass / mass).toFixed(3)} of the real frames' red`,
+  );
+
+  // The centroids above are weighted sums over a whole axis, so red anywhere in
+  // the frame moves them: a bar shifted off its row, plus a dim patch elsewhere
+  // sized to pull the row sum back, reads as correctly placed. Where the
+  // half-peak run detection actually found the bar cannot be moved that way, and
+  // the interior check below is translation-blind by design, so nothing else
+  // would notice.
+  const acrossBox = mean(centreOf(previous.bar.left, previous.bar.width), centreOf(current.bar.left, current.bar.width));
+  report(
+    Math.abs(centreOf(interpolated.bar.left, interpolated.bar.width) - acrossBox) > MIDPOINT_TOLERANCE_PIXELS,
+    `bar found at ${centreOf(interpolated.bar.left, interpolated.bar.width)}px, not the ${acrossBox}px midpoint of where it was found in the real frames`,
+  );
+
+  const downBox = mean(centreOf(previous.bar.top, previous.bar.height), centreOf(current.bar.top, current.bar.height));
+  report(
+    Math.abs(centreOf(interpolated.bar.top, interpolated.bar.height) - downBox) > MIDPOINT_TOLERANCE_PIXELS,
+    `bar found on row ${centreOf(interpolated.bar.top, interpolated.bar.height)}, not row ${downBox} as in the real frames`,
   );
 
   // Last, because it is the only check that looks at the bar's interior rather

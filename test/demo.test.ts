@@ -95,6 +95,9 @@ describe("demo geometry", () => {
 describe("marker measurement", () => {
   const SIZE: readonly [number, number] = [128, 96];
   const BAR = { width: 8, top: 20, height: 50 };
+  // Far from any column the bar occupies.
+  const DECOY_LEFT = 4;
+  const DECOY_WIDTH = 32;
 
   // A red bar on a grey field: the arrangement measureMarker is built to read,
   // with the answer known by construction rather than by rendering.
@@ -105,6 +108,8 @@ describe("marker measurement", () => {
     red?: number;
     // Rewrites a pixel inside the bar, given its position within the bar.
     corrupt?: (x: number, y: number, red: number) => number;
+    // Red laid down away from the bar, in columns it never occupies.
+    decoy?: { row: number; height: number; red: number };
   }
 
   function frame(bar: Bar): Float32Array {
@@ -118,14 +123,44 @@ describe("marker measurement", () => {
       for (let x = 0; x < width; x++) {
         const inside = x >= bar.left && x < bar.left + BAR.width && y >= top && y < top + tall;
         const red = bar.corrupt && inside ? bar.corrupt(x - bar.left, y - top, flat) : flat;
-        texels.set(inside ? [red, 0, 0, 1] : [0.3, 0.34, 0.4, 1], (y * width + x) * 4);
+        const decoyed =
+          bar.decoy !== undefined &&
+          x >= DECOY_LEFT &&
+          x < DECOY_LEFT + DECOY_WIDTH &&
+          y >= bar.decoy.row &&
+          y < bar.decoy.row + bar.decoy.height;
+
+        if (inside || decoyed) {
+          texels.set([inside ? red : bar.decoy!.red, 0, 0, 1], (y * width + x) * 4);
+          continue;
+        }
+
+        texels.set([0.3, 0.34, 0.4, 1], (y * width + x) * 4);
       }
     }
 
     return texels;
   }
 
-  const profile = (bar: Parameters<typeof frame>[0]) => measureMarker(frame(bar), SIZE);
+  const profile = (bar: Bar) => measureMarker(frame(bar), SIZE);
+
+  // What the row centroid used to be: summed across the full frame width, which
+  // is what the decoy below is built to fool.
+  function fullFrameRowCentroid(texels: Float32Array): number {
+    const [width, height] = SIZE;
+    let weight = 0;
+    let moment = 0;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const at = (y * width + x) * 4;
+        const red = Math.max(0, texels[at] - Math.max(texels[at + 1], texels[at + 2]));
+        weight += red;
+        moment += red * (y + 0.5);
+      }
+    }
+
+    return moment / weight;
+  }
   // Two real frames sixteen pixels apart, so the midpoint bar sits at 48.
   const previous = () => profile({ left: 40 });
   const current = () => profile({ left: 56 });
@@ -196,6 +231,26 @@ describe("marker measurement", () => {
     expect(hole.mass / previous().mass).toBeGreaterThan(0.95);
     expect(failures.join(" ")).toMatch(/pixels differ/);
     expect(failures.join(" ")).not.toMatch(/carries/);
+  });
+
+  it("rejects a bar moved off its row by red placed elsewhere in the frame", () => {
+    // A row profile summed across the whole frame carries every red thing in it,
+    // so a dim patch away from the bar, sized and placed to pull that sum back,
+    // can hide a bar that really has moved. Both the centroid and the box the
+    // run detection found are needed to see it: the centroid is now taken over
+    // the bar's own box, and the box is where it was found rather than a sum.
+    const bar = { left: 48, top: BAR.top + 3 };
+    const decoy = { row: BAR.top + 2, height: 11, red: 0.2 };
+    const hidden = profile({ ...bar, decoy });
+
+    // The patch does what it was built to do: the bar is three pixels low, and
+    // a row profile over the whole frame reads it as barely moved at all.
+    expect(profile(bar).rowCentroid).toBeCloseTo(48, 1);
+    expect(fullFrameRowCentroid(frame({ ...bar, decoy }))).toBeCloseTo(45, 0);
+
+    const failures = midpointFailures(previous(), current(), hidden);
+    expect(failures.join(" ")).toMatch(/centred on row/);
+    expect(failures.join(" ")).toMatch(/found on row/);
   });
 
   it("rejects a mistimed bar", () => {
