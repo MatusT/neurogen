@@ -17,6 +17,7 @@ import { FrameGenerator } from "../src/index.js";
 import blendWeightAsset from "../src/wgsl/neural/weights/blend_weight_mlp.json";
 import { GBuffer } from "./gbuffer.js";
 import { Presenter } from "./present.js";
+import { enabledFrom, FrameGen, shown, Shown } from "./schedule.js";
 import { demoScene, PROJECTION, projectionFor } from "./scene.js";
 import { formatMeasurement, measureMidpointTiming } from "./verify.js";
 
@@ -24,11 +25,6 @@ const RENDER_SIZE: readonly [number, number] = [1280, 720];
 // Display refreshes per real frame.
 const REAL_FRAME_PERIOD = 2;
 const FPS_WINDOW_MS = 500;
-
-enum FrameGen {
-  Off,
-  On,
-}
 
 function element<T extends HTMLElement>(id: string): T {
   const found = document.getElementById(id);
@@ -99,7 +95,12 @@ function run(device: GPUDevice, context: GPUCanvasContext, format: GPUTextureFor
   let neural = false;
   let refresh = 0;
   let realFrame = -1;
-  let interpolated: GPUTexture | null = null;
+  // Written by every real frame after the first, which is exactly when the
+  // schedule can return Shown.Interpolated.
+  let interpolated!: GPUTexture;
+  // Started as though the toggle had just been engaged while real frame 0 was
+  // on screen: the frame between 0 and 1 is the first thing there is to show.
+  let enabled = enabledFrom(0);
   let paused = false;
   let windowStart = performance.now();
   let presentedInWindow = 0;
@@ -107,6 +108,7 @@ function run(device: GPUDevice, context: GPUCanvasContext, format: GPUTextureFor
 
   framegenInput.addEventListener("change", () => {
     mode = framegenInput.checked ? FrameGen.On : FrameGen.Off;
+    enabled = enabledFrom(realFrame);
     hud.framegen.textContent = mode === FrameGen.On ? "on" : "off — real frames held";
   });
   hud.framegen.textContent = mode === FrameGen.On ? "on" : "off — real frames held";
@@ -174,21 +176,29 @@ function run(device: GPUDevice, context: GPUCanvasContext, format: GPUTextureFor
       }
     }
 
-    const target = context.getCurrentTexture().createView();
-    if (mode === FrameGen.Off || !interpolated) {
-      presenter.present(target, gbuffer.currentColor.createView());
-      hud.presenting.textContent = `real frame ${realFrame}`;
-    } else if (newRealFrame) {
-      presenter.present(target, gbuffer.previousColor.createView());
-      hud.presenting.textContent = `real frame ${realFrame - 1}`;
-    } else {
-      presenter.present(target, interpolated.createView());
-      hud.presenting.textContent = `interpolated, between ${realFrame - 1} and ${realFrame}`;
-    }
+    const what = shown({ mode, rendered: newRealFrame, realFrame, enabledFrom: enabled });
+    presenter.present(context.getCurrentTexture().createView(), source(what).createView());
+    hud.presenting.textContent = label(what);
 
     refresh++;
     presentedInWindow++;
     updateRates();
+  }
+
+  function source(what: Shown): GPUTexture {
+    if (what === Shown.RealPrevious) {
+      return gbuffer.previousColor;
+    }
+
+    return what === Shown.Interpolated ? interpolated : gbuffer.currentColor;
+  }
+
+  function label(what: Shown): string {
+    if (what === Shown.Interpolated) {
+      return `interpolated, between ${realFrame - 1} and ${realFrame}`;
+    }
+
+    return `real frame ${what === Shown.RealPrevious ? realFrame - 1 : realFrame}`;
   }
 
   function updateRates(): void {

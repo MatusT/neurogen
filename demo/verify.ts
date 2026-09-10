@@ -2,15 +2,21 @@
 // constant velocity, and the interpolated frame's copy of it measured against
 // the midpoint of the two real frames it was generated from.
 //
-// Two things have to hold, and only together do they mean anything:
+// Six things have to hold, and only together do they mean anything:
 //
-//   position  the bar's centroid sits halfway between the two real frames'
-//   shape     it is still one bar of the original width
+//   across    the bar's centroid sits halfway between the two real frames'
+//   shape     it is one bar, not two, and the same width
+//   down      it sits on the same row, at the same height
+//   mass      it carries the same red
 //
-// The bar is narrower than its per-frame travel, so a pipeline that merely
-// crossfaded the two real frames would leave two bars with a gap between them.
-// That has the same centroid as the correct answer — the position test alone
-// cannot tell the two apart, which is why the shape test is not decoration.
+// Each covers a failure the others are blind to. The bar is narrower than its
+// per-frame travel, so a crossfade of the two real frames leaves two bars with
+// a gap — and the same centroid as the right answer, which is why counting the
+// bars is not decoration. A column profile says nothing at all about the other
+// axis, so without the row figures a bar slid a hundred pixels down, or reduced
+// to a single row, measures identically to a correct one. And `ghost` is a
+// ratio, so a uniformly dimmer frame leaves it unchanged; `mass` is what sees
+// that.
 
 import {
   FrameGenerator,
@@ -92,29 +98,54 @@ async function readColor(device: GPUDevice, texture: GPUTexture): Promise<Float3
 }
 
 export interface MarkerProfile {
-  // Weighted mean column of the bar itself, in pixels.
+  // Weighted mean column of the bar, in pixels.
   centroid: number;
   // Columns carrying more than half the peak column's weight: the bar's width.
   span: number;
   // How many separate bars those columns form. Two means a crossfade.
   bars: number;
+  // The same two figures down the other axis. A column profile alone says
+  // nothing about where the bar sits vertically or how much of its height
+  // survived, so a frame with the bar slid down or reduced to one row measures
+  // identically to a correct one.
+  rowCentroid: number;
+  rowSpan: number;
+  // Total red in the bar, unnormalised. `ghost` is a ratio and cannot see a
+  // frame that is uniformly dimmer; this can.
+  mass: number;
   // Fraction of the frame's red lying outside the bar. The blend leaves a
   // partial trail behind a fast edge, and averaging it into the centroid would
   // report that ghost as a timing error, so it is measured rather than mixed in.
   ghost: number;
 }
 
-// Runs of columns carrying more than half the peak column's weight. The widest
-// is the bar; a second one is the signature of a crossfade.
-function barRuns(columns: Float32Array, peak: number): { from: number; to: number }[] {
-  const half = peak / 2;
+interface AxisProfile {
+  centroid: number;
+  span: number;
+  bars: number;
+  weight: number;
+}
+
+// Where the marker sits along one axis, from that axis's summed profile.
+//
+// The bar is the widest run above half the peak. Strictly above: a warp landing
+// exactly on a half pixel would split its two end columns to half weight each
+// and measure one column narrow, which the current whole-pixel-per-frame
+// velocities never produce but a fractional one could.
+function measureAxis(values: Float32Array): AxisProfile {
+  let total = 0;
+  let peak = 0;
+  for (const value of values) {
+    total += value;
+    peak = Math.max(peak, value);
+  }
+
   const runs: { from: number; to: number }[] = [];
   let start = -1;
-
-  for (let x = 0; x <= columns.length; x++) {
-    const above = x < columns.length && columns[x] > half;
+  for (let at = 0; at <= values.length; at++) {
+    const above = at < values.length && values[at] > peak / 2;
     if (above) {
-      start = start < 0 ? x : start;
+      start = start < 0 ? at : start;
       continue;
     }
 
@@ -122,11 +153,38 @@ function barRuns(columns: Float32Array, peak: number): { from: number; to: numbe
       continue;
     }
 
-    runs.push({ from: start, to: x - 1 });
+    runs.push({ from: start, to: at - 1 });
     start = -1;
   }
 
-  return runs;
+  const bar = runs.reduce((widest, run) => (run.to - run.from > widest.to - widest.from ? run : widest), {
+    from: 0,
+    to: -1,
+  });
+  // One cell either side. The marker is a thin box seen from off-centre, so the
+  // camera catches a dim sliver of its side face in the column just beyond the
+  // bar: below the half-peak threshold, but still the marker. Including it is
+  // what makes the measured position agree with the scene's own transforms
+  // rather than sit a fifth of a pixel out, and the same rule runs over all
+  // three frames.
+  const from = Math.max(0, bar.from - 1);
+  const to = Math.min(values.length - 1, bar.to + 1);
+
+  let weight = 0;
+  let moment = 0;
+  for (let at = from; at <= to; at++) {
+    weight += values[at];
+    // Pixel centres, so the centroid is in the same continuous coordinates
+    // projectToPixel reports rather than half a pixel to the left of them.
+    moment += values[at] * (at + 0.5);
+  }
+
+  return {
+    centroid: weight > 0 ? moment / weight : Number.NaN,
+    span: bar.to - bar.from + 1,
+    bars: runs.length,
+    weight: total > 0 ? weight : 0,
+  };
 }
 
 // The marker is the only red thing in the scene and the backdrop is blue-grey,
@@ -138,49 +196,92 @@ export function measureMarker(
 ): MarkerProfile {
   const [width, height] = size;
   const columns = new Float32Array(width);
+  const rows = new Float32Array(height);
+  let total = 0;
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const at = (y * width + x) * CHANNELS;
-      columns[x] += Math.max(0, texels[at] - Math.max(texels[at + 1], texels[at + 2]));
+      const red = Math.max(0, texels[at] - Math.max(texels[at + 1], texels[at + 2]));
+      columns[x] += red;
+      rows[y] += red;
+      total += red;
     }
   }
 
-  let total = 0;
-  let peak = 0;
-  for (let x = 0; x < width; x++) {
-    total += columns[x];
-    peak = Math.max(peak, columns[x]);
-  }
-
-  const runs = barRuns(columns, peak);
-  const bar = runs.reduce((widest, run) => (run.to - run.from > widest.to - widest.from ? run : widest), {
-    from: 0,
-    to: -1,
-  });
-  // One column either side. The marker is a thin box seen from off-centre, so
-  // the camera catches a dim sliver of its side face in the column just beyond
-  // the bar: below the half-peak threshold, but still the marker. Including it
-  // is what makes the measured position agree with the scene's own transforms
-  // rather than sit a fifth of a pixel out, and the same rule runs over all
-  // three frames.
-  const from = Math.max(0, bar.from - 1);
-  const to = Math.min(width - 1, bar.to + 1);
-
-  let weight = 0;
-  let moment = 0;
-  for (let x = from; x <= to; x++) {
-    weight += columns[x];
-    // Pixel centres, so the centroid is in the same continuous coordinates
-    // projectToPixel reports rather than half a pixel to the left of them.
-    moment += columns[x] * (x + 0.5);
-  }
+  const across = measureAxis(columns);
+  const down = measureAxis(rows);
 
   return {
-    centroid: weight > 0 ? moment / weight : Number.NaN,
-    span: bar.to - bar.from + 1,
-    bars: runs.length,
-    ghost: total > 0 ? (total - weight) / total : 0,
+    centroid: across.centroid,
+    span: across.span,
+    bars: across.bars,
+    rowCentroid: down.centroid,
+    rowSpan: down.span,
+    mass: across.weight,
+    ghost: total > 0 ? (total - across.weight) / total : 0,
   };
+}
+
+// A width or height is allowed to differ by one cell: the half-peak threshold
+// lands on a pixel boundary, and the warp does not have to land on the same one
+// the real frames did.
+const SPAN_TOLERANCE_PIXELS = 1;
+// The warped bar carries the same red as the real ones — measured, 0.04% less.
+// Five percent leaves room for a driver rasterising an edge differently while
+// staying nowhere near what losing rows or dimming the frame would cost.
+const MASS_TOLERANCE_FRACTION = 0.05;
+
+// Everything about the interpolated frame this measurement can see going wrong,
+// as sentences rather than a boolean — a caller that only knows "it failed"
+// cannot tell a mistimed frame from one missing half its rows.
+export function midpointFailures(
+  previous: MarkerProfile,
+  current: MarkerProfile,
+  interpolated: MarkerProfile,
+): string[] {
+  const failures: string[] = [];
+  const mean = (from: number, to: number) => (from + to) / 2;
+  const report = (wrong: boolean, message: string) => {
+    if (wrong) {
+      failures.push(message);
+    }
+  };
+
+  const midpoint = mean(previous.centroid, current.centroid);
+  report(
+    Math.abs(interpolated.centroid - midpoint) > MIDPOINT_TOLERANCE_PIXELS,
+    `bar at ${interpolated.centroid.toFixed(2)}px, not the ${midpoint.toFixed(2)}px midpoint of ` +
+      `${previous.centroid.toFixed(2)} and ${current.centroid.toFixed(2)}`,
+  );
+  report(interpolated.bars !== 1, `${interpolated.bars} bars, not one — a crossfade, not a warp`);
+
+  const width = mean(previous.span, current.span);
+  report(
+    Math.abs(interpolated.span - width) > SPAN_TOLERANCE_PIXELS,
+    `bar ${interpolated.span}px wide, against ${width}px in the real frames`,
+  );
+
+  // The marker only ever moves horizontally, so both real frames agree here and
+  // so must the frame between them.
+  const row = mean(previous.rowCentroid, current.rowCentroid);
+  report(
+    Math.abs(interpolated.rowCentroid - row) > MIDPOINT_TOLERANCE_PIXELS,
+    `bar centred on row ${interpolated.rowCentroid.toFixed(2)}, against ${row.toFixed(2)} in the real frames`,
+  );
+
+  const height = mean(previous.rowSpan, current.rowSpan);
+  report(
+    Math.abs(interpolated.rowSpan - height) > SPAN_TOLERANCE_PIXELS,
+    `bar ${interpolated.rowSpan}px tall, against ${height}px in the real frames`,
+  );
+
+  const mass = mean(previous.mass, current.mass);
+  report(
+    Math.abs(interpolated.mass - mass) > MASS_TOLERANCE_FRACTION * mass,
+    `bar carries ${(interpolated.mass / mass).toFixed(3)} of the real frames' red`,
+  );
+
+  return failures;
 }
 
 export interface MidpointMeasurement {
@@ -199,6 +300,8 @@ export interface MidpointMeasurement {
   midpoint: number;
   error: number;
   tolerance: number;
+  // Empty when the interpolated frame passed every check.
+  failures: string[];
 }
 
 export interface MidpointOptions {
@@ -259,6 +362,7 @@ export async function measureMidpointTiming(
     midpoint,
     error: Math.abs(measured.centroid - midpoint),
     tolerance: MIDPOINT_TOLERANCE_PIXELS,
+    failures: midpointFailures(previous, current, measured),
   };
 }
 
@@ -274,7 +378,13 @@ export function formatMeasurement(m: MidpointMeasurement): string {
     `interpolated centroid    ${px(m.interpolated.centroid)} px`,
     `midpoint error           ${px(m.error)} px   (tolerance ${m.tolerance})`,
     `bar width above half     ${m.previous.span} / ${m.interpolated.span} / ${m.current.span} px  (real / interpolated / real)`,
+    `bar height above half    ${m.previous.rowSpan} / ${m.interpolated.rowSpan} / ${m.current.rowSpan} px`,
+    `bar row centre           ${px(m.previous.rowCentroid)} / ${m.interpolated.rowCentroid.toFixed(2)} / ${m.current.rowCentroid.toFixed(2)}   (the marker never moves vertically)`,
+    `red in the bar           ${px(m.previous.mass)} / ${m.interpolated.mass.toFixed(2)} / ${m.current.mass.toFixed(2)}`,
     `separate bars            ${m.previous.bars} / ${m.interpolated.bars} / ${m.current.bars}      (2 in the middle would be a crossfade)`,
     `red outside the bar      ${(m.interpolated.ghost * 100).toFixed(1)}%      (the blend's trail behind a fast edge)`,
+    m.failures.length === 0
+      ? "all checks passed"
+      : `FAILED: ${m.failures.join("; ")}`,
   ].join("\n");
 }
