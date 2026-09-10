@@ -5,6 +5,9 @@ import reconstructAndDilateWgsl from "../src/wgsl/generated/frameinterpolation/r
 import gameMotionVectorFieldWgsl from "../src/wgsl/generated/frameinterpolation/game_motion_vector_field.wgsl.js";
 import opticalFlowVectorFieldWgsl from "../src/wgsl/generated/frameinterpolation/optical_flow_vector_field.wgsl.js";
 import disocclusionMaskWgsl from "../src/wgsl/generated/frameinterpolation/disocclusion_mask.wgsl.js";
+import preliminaryBlendWgsl from "../src/wgsl/generated/frameinterpolation/preliminary_blend.wgsl.js";
+import inpaintingPyramidWgsl from "../src/wgsl/generated/frameinterpolation/inpainting_pyramid.wgsl.js";
+import finalBlendWgsl from "../src/wgsl/generated/frameinterpolation/final_blend.wgsl.js";
 
 // Mirrors FrameInterpolationParams in src/wgsl/frameinterpolation/params.wgsl.
 // Padded to 48 bytes; the struct itself is 40.
@@ -21,7 +24,7 @@ interface ParamsOverrides {
   reset?: number;
 }
 
-function frameInterpolationParams(overrides: ParamsOverrides): Uint8Array {
+function frameInterpolationParams(overrides: ParamsOverrides): Uint8Array<ArrayBuffer> {
   const bytes = new Uint8Array(PARAMS_BYTE_LENGTH);
   const view = new DataView(bytes.buffer);
   view.setInt32(0, overrides.renderSize[0], true);
@@ -109,6 +112,199 @@ function vec2Texture(
     }
   }
   return harness.createTexture(width, height, texels);
+}
+
+function colorTexture(
+  harness: GpuHarness,
+  [width, height]: [number, number],
+  valueAt: (x: number, y: number) => [number, number, number],
+): GPUTexture {
+  const texels = new Float32Array(width * height * 4);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const [r, g, b] = valueAt(x, y);
+      texels[(y * width + x) * 4] = r;
+      texels[(y * width + x) * 4 + 1] = g;
+      texels[(y * width + x) * 4 + 2] = b;
+      texels[(y * width + x) * 4 + 3] = 1;
+    }
+  }
+  return harness.createTexture(width, height, texels);
+}
+
+// Mirrors fiPyramidMipSize / fiPyramidMipOffset in common.wgsl.
+const INPAINTING_MIP_COUNT = 4;
+
+function pyramidTexelCount([width, height]: [number, number]): number {
+  let total = 0;
+  for (let level = 0; level < INPAINTING_MIP_COUNT; level++) {
+    total += Math.max(width >> (level + 1), 1) * Math.max(height >> (level + 1), 1);
+  }
+  return total;
+}
+
+interface Frame {
+  currentColorAt: (x: number, y: number) => [number, number, number];
+  previousColorAt: (x: number, y: number) => [number, number, number];
+  depthAt: (x: number, y: number) => number;
+  motionVectorPixelsAt: (x: number, y: number) => [number, number];
+  opticalFlowPixelsAt?: (x: number, y: number) => [number, number];
+  sceneChanged?: boolean;
+  reset?: boolean;
+}
+
+// The whole module wired up in the dispatch order its passes document, holding
+// the temporal resources across calls so a sequence of frames exercises the
+// same state a real `prepare()` loop would.
+class Pipeline {
+  private readonly paramsPerMip: GPUBuffer[];
+  private readonly sceneChange: GPUBuffer;
+  private readonly buffers: Record<string, GPUBuffer>;
+  private readonly pipelines: Record<string, GPUComputePipeline>;
+
+  constructor(
+    private readonly harness: GpuHarness,
+    private readonly renderSize: [number, number],
+  ) {
+    const [width, height] = renderSize;
+    const pixels = width * height;
+    const [gridWidth, gridHeight] = opticalFlowGridSize(renderSize);
+
+    this.paramsPerMip = Array.from({ length: INPAINTING_MIP_COUNT }, (_, inpaintingMipLevel) =>
+      harness.createUniformBuffer(frameInterpolationParams({ renderSize, inpaintingMipLevel })),
+    );
+    this.sceneChange = harness.createStorageBuffer(new Uint32Array(1));
+    this.buffers = {
+      gameField: harness.createStorageBuffer(new Uint32Array(pixels * 2)),
+      opticalFlowField: harness.createStorageBuffer(new Uint32Array(gridWidth * gridHeight * 2)),
+      depthPrevious: harness.createStorageBuffer(new Uint32Array(pixels)),
+      depthInterpolated: harness.createStorageBuffer(new Uint32Array(pixels)),
+      state: harness.createStorageBuffer(new Uint32Array(1)),
+      dilatedDepth: harness.createStorageBuffer(new Float32Array(pixels)),
+      dilatedMotionVectors: harness.createStorageBuffer(new Float32Array(pixels * 2)),
+      disocclusionMask: harness.createStorageBuffer(new Float32Array(pixels * 2)),
+      preliminaryColor: harness.createStorageBuffer(new Float32Array(pixels * 4)),
+      blendWeight: harness.createStorageBuffer(new Float32Array(pixels)),
+      inpaintingPyramid: harness.createStorageBuffer(
+        new Float32Array(pyramidTexelCount(renderSize) * 4),
+      ),
+      interpolatedColor: harness.createStorageBuffer(new Float32Array(pixels * 4)),
+    };
+    this.pipelines = {
+      setup: harness.createComputePipeline(setupWgsl),
+      reconstructAndDilate: harness.createComputePipeline(reconstructAndDilateWgsl),
+      gameMotionVectorField: harness.createComputePipeline(gameMotionVectorFieldWgsl),
+      opticalFlowVectorField: harness.createComputePipeline(opticalFlowVectorFieldWgsl),
+      disocclusionMask: harness.createComputePipeline(disocclusionMaskWgsl),
+      preliminaryBlend: harness.createComputePipeline(preliminaryBlendWgsl),
+      inpaintingPyramid: harness.createComputePipeline(inpaintingPyramidWgsl),
+      finalBlend: harness.createComputePipeline(finalBlendWgsl),
+    };
+  }
+
+  async run(frame: Frame): Promise<void> {
+    const [width, height] = this.renderSize;
+    const [gridWidth, gridHeight] = opticalFlowGridSize(this.renderSize);
+    const cells = gridWidth * gridHeight;
+    const { device } = this.harness;
+    const b = this.buffers;
+
+    device.queue.writeBuffer(
+      this.sceneChange,
+      0,
+      new Uint32Array([frame.sceneChanged ? 1 : 0]),
+    );
+    const params = frameInterpolationParams({
+      renderSize: this.renderSize,
+      reset: frame.reset ? 1 : 0,
+    });
+    device.queue.writeBuffer(this.paramsPerMip[0], 0, params);
+
+    const currentColor = colorTexture(this.harness, this.renderSize, frame.currentColorAt).createView();
+    const previousColor = colorTexture(this.harness, this.renderSize, frame.previousColorAt).createView();
+    const depth = scalarTexture(this.harness, this.renderSize, frame.depthAt).createView();
+    const motionVectors = vec2Texture(this.harness, this.renderSize, frame.motionVectorPixelsAt).createView();
+
+    const flowData = new Int32Array(cells * 2);
+    const validityData = new Uint32Array(cells);
+    for (let y = 0; y < gridHeight; y++) {
+      for (let x = 0; x < gridWidth; x++) {
+        const [vx, vy] = frame.opticalFlowPixelsAt?.(x, y) ?? [0, 0];
+        flowData[(y * gridWidth + x) * 2] = vx;
+        flowData[(y * gridWidth + x) * 2 + 1] = vy;
+        validityData[y * gridWidth + x] = 1;
+      }
+    }
+    const opticalFlow = this.harness.createStorageBuffer(flowData);
+    const opticalFlowValidity = this.harness.createStorageBuffer(validityData);
+
+    const base = { buffer: this.paramsPerMip[0] };
+    const frameGroups: [number, number] = [groupCount(width), groupCount(height)];
+
+    await this.harness.dispatch(
+      this.pipelines.setup,
+      [base, { buffer: b.gameField }, { buffer: b.opticalFlowField }, { buffer: b.depthPrevious },
+        { buffer: b.depthInterpolated }, { buffer: this.sceneChange }, { buffer: b.state }],
+      frameGroups,
+    );
+    await this.harness.dispatch(
+      this.pipelines.reconstructAndDilate,
+      [base, depth, motionVectors, { buffer: b.dilatedDepth }, { buffer: b.dilatedMotionVectors },
+        { buffer: b.depthPrevious }],
+      frameGroups,
+    );
+    await this.harness.dispatch(
+      this.pipelines.gameMotionVectorField,
+      [base, { buffer: b.dilatedDepth }, { buffer: b.dilatedMotionVectors }, currentColor,
+        previousColor, { buffer: b.gameField }, { buffer: b.depthInterpolated }],
+      frameGroups,
+    );
+    await this.harness.dispatch(
+      this.pipelines.opticalFlowVectorField,
+      [base, { buffer: opticalFlow }, { buffer: opticalFlowValidity }, currentColor, previousColor,
+        { buffer: b.opticalFlowField }],
+      [groupCount(gridWidth), groupCount(gridHeight)],
+    );
+    await this.harness.dispatch(
+      this.pipelines.disocclusionMask,
+      [base, { buffer: b.depthInterpolated }, { buffer: b.depthPrevious }, { buffer: b.dilatedDepth },
+        { buffer: b.gameField }, { buffer: b.disocclusionMask }],
+      frameGroups,
+    );
+    await this.harness.dispatch(
+      this.pipelines.preliminaryBlend,
+      [base, currentColor, previousColor, { buffer: b.gameField }, { buffer: b.opticalFlowField },
+        { buffer: b.disocclusionMask }, { buffer: b.preliminaryColor }, { buffer: b.blendWeight },
+        { buffer: b.state }],
+      frameGroups,
+    );
+    for (let level = 0; level < INPAINTING_MIP_COUNT; level++) {
+      await this.harness.dispatch(
+        this.pipelines.inpaintingPyramid,
+        [{ buffer: this.paramsPerMip[level] }, { buffer: b.preliminaryColor },
+          { buffer: b.blendWeight }, { buffer: b.inpaintingPyramid }],
+        [
+          groupCount(Math.max(width >> (level + 1), 1)),
+          groupCount(Math.max(height >> (level + 1), 1)),
+        ],
+      );
+    }
+    await this.harness.dispatch(
+      this.pipelines.finalBlend,
+      [base, currentColor, { buffer: b.preliminaryColor }, { buffer: b.blendWeight },
+        { buffer: b.inpaintingPyramid }, { buffer: b.interpolatedColor }, { buffer: b.state }],
+      frameGroups,
+    );
+  }
+
+  async read(name: string, elements: number): Promise<Float32Array> {
+    return new Float32Array(await this.harness.readBuffer(this.buffers[name], elements * 4));
+  }
+
+  async interpolatedColor(): Promise<Float32Array> {
+    const [width, height] = this.renderSize;
+    return this.read("interpolatedColor", width * height * 4);
+  }
 }
 
 describe("frame interpolation", () => {
@@ -540,6 +736,241 @@ describe("frame interpolation", () => {
       const mask = await runDisocclusionMask(renderSize, () => 0.5, () => 0.5 - 2e-5);
 
       expect(Array.from(mask).every((component) => component === 1)).toBe(true);
+    });
+  });
+
+  describe("full pipeline", () => {
+    const FLAT_DEPTH = 0.5;
+    // No two columns alike, so a one-pixel misalignment shows up, and offset
+    // far enough from zero that a shifted lookup stays a valid colour.
+    const gradient = (x: number, y: number): [number, number, number] => [
+      (x + 16) / 64,
+      (y + 16) / 64,
+      0.25,
+    ];
+
+    function colorAt(image: Float32Array, width: number, x: number, y: number): number[] {
+      const base = (y * width + x) * 4;
+      return [image[base], image[base + 1], image[base + 2]];
+    }
+
+    // The shader works in f32 and, at non-power-of-two sizes, through bilinear
+    // weights that miss an exact 1.0 by an ulp, so exact equality is the wrong
+    // bar even for a passthrough.
+    function expectColorClose(actual: number[], expected: number[]): void {
+      for (let channel = 0; channel < 3; channel++) {
+        expect(actual[channel]).toBeCloseTo(expected[channel], 5);
+      }
+    }
+
+    it("reproduces the source frame exactly when nothing moves", async () => {
+      const renderSize: [number, number] = [16, 8];
+      const pipeline = new Pipeline(harness, renderSize);
+      const stationary = {
+        currentColorAt: gradient,
+        previousColorAt: gradient,
+        depthAt: () => FLAT_DEPTH,
+        motionVectorPixelsAt: (): [number, number] => [0, 0],
+      };
+
+      // The first frame of a sequence has no usable previous frame, so
+      // orchestration must flag it as a reset.
+      await pipeline.run({ ...stationary, reset: true });
+      await pipeline.run(stationary);
+      const result = await pipeline.interpolatedColor();
+
+      for (let y = 0; y < 8; y++) {
+        for (let x = 0; x < 16; x++) {
+          expectColorClose(colorAt(result, 16, x, y), gradient(x, y));
+        }
+      }
+    });
+
+    it("lands a uniform translation halfway between the two frames", async () => {
+      const renderSize: [number, number] = [32, 16];
+      const shift = 2;
+      // Content moved `shift` pixels right, so a current-frame pixel was `shift`
+      // to its left in the previous frame.
+      const previousColorAt = gradient;
+      const currentColorAt = (x: number, y: number): [number, number, number] =>
+        x >= shift ? gradient(x - shift, y) : [0, 0, 0];
+      const frame = {
+        currentColorAt,
+        previousColorAt,
+        depthAt: () => FLAT_DEPTH,
+        motionVectorPixelsAt: (): [number, number] => [-shift, 0],
+        opticalFlowPixelsAt: (): [number, number] => [-shift, 0],
+      };
+
+      const pipeline = new Pipeline(harness, renderSize);
+      await pipeline.run({ ...frame, reset: true });
+      await pipeline.run(frame);
+      const result = await pipeline.interpolatedColor();
+
+      // The interpolated frame sits half a step along, so it holds the source
+      // pattern shifted by one pixel. Columns near the edges have one source
+      // reprojecting off frame and are excluded.
+      for (let y = 0; y < 16; y++) {
+        for (let x = shift; x < 32 - shift; x++) {
+          const expected = gradient(x - shift / 2, y);
+          const actual = colorAt(result, 32, x, y);
+          expect(actual[0]).toBeCloseTo(expected[0], 4);
+          expect(actual[1]).toBeCloseTo(expected[1], 4);
+        }
+      }
+    });
+
+    it("handles an odd-dimensioned render target", async () => {
+      const renderSize: [number, number] = [13, 7];
+      const pipeline = new Pipeline(harness, renderSize);
+      const stationary = {
+        currentColorAt: gradient,
+        previousColorAt: gradient,
+        depthAt: () => FLAT_DEPTH,
+        motionVectorPixelsAt: (): [number, number] => [0, 0],
+      };
+
+      await pipeline.run({ ...stationary, reset: true });
+      await pipeline.run(stationary);
+      const result = await pipeline.interpolatedColor();
+
+      for (let y = 0; y < 7; y++) {
+        for (let x = 0; x < 13; x++) {
+          expectColorClose(colorAt(result, 13, x, y), gradient(x, y));
+        }
+      }
+    });
+
+    it("shows one real frame instead of interpolating across a scene cut", async () => {
+      const renderSize: [number, number] = [16, 8];
+      const pipeline = new Pipeline(harness, renderSize);
+      const before = (): [number, number, number] => [0.9, 0.1, 0.1];
+      const after = (): [number, number, number] => [0.1, 0.1, 0.9];
+
+      await pipeline.run({
+        currentColorAt: before,
+        previousColorAt: before,
+        depthAt: () => FLAT_DEPTH,
+        motionVectorPixelsAt: () => [0, 0],
+        reset: true,
+      });
+      await pipeline.run({
+        currentColorAt: before,
+        previousColorAt: before,
+        depthAt: () => FLAT_DEPTH,
+        motionVectorPixelsAt: () => [0, 0],
+      });
+
+      // Unrelated content on both sides — blending them would produce a colour
+      // present in neither.
+      await pipeline.run({
+        currentColorAt: after,
+        previousColorAt: before,
+        depthAt: () => FLAT_DEPTH,
+        motionVectorPixelsAt: () => [0, 0],
+        sceneChanged: true,
+      });
+      const result = await pipeline.interpolatedColor();
+
+      for (let y = 0; y < 8; y++) {
+        for (let x = 0; x < 16; x++) {
+          expectColorClose(colorAt(result, 16, x, y), [0.1, 0.1, 0.9]);
+        }
+      }
+    });
+
+    it("detects the strip a moving foreground uncovers", async () => {
+      const renderSize: [number, number] = [32, 16];
+      const [width, height] = renderSize;
+      const shift = 8;
+      const foregroundWidth = 8;
+      const background: [number, number, number] = [0.8, 0.15, 0.15];
+      const foreground: [number, number, number] = [0.15, 0.8, 0.15];
+
+      // A foreground block at depth 0.2 slides right across a background at
+      // depth 0.9, uncovering the columns it used to sit on.
+      const blockAt = (origin: number) => (x: number): [number, number, number] =>
+        x >= origin && x < origin + foregroundWidth ? foreground : background;
+      const depthAt = (x: number) => (x >= shift && x < shift + foregroundWidth ? 0.2 : 0.9);
+      const motionVectorPixelsAt = (x: number): [number, number] =>
+        x >= shift && x < shift + foregroundWidth ? [-shift, 0] : [0, 0];
+
+      const pipeline = new Pipeline(harness, renderSize);
+      const frame = {
+        currentColorAt: blockAt(shift),
+        previousColorAt: blockAt(0),
+        depthAt,
+        motionVectorPixelsAt,
+      };
+      await pipeline.run({ ...frame, reset: true });
+      await pipeline.run(frame);
+
+      const mask = await pipeline.read("disocclusionMask", width * height * 2);
+      const result = await pipeline.interpolatedColor();
+
+      // The interpolated frame puts the block on columns 3..12 — half a step
+      // along, widened by one on each side by the depth dilation. Columns 0..2
+      // are background it has moved off, so the previous frame does not contain
+      // them; columns 13..16 are background it has not reached yet, so the
+      // current frame does not.
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < 3; x++) {
+          expect(mask[(y * width + x) * 2]).toBe(0);
+        }
+        for (let x = 13; x < 17; x++) {
+          expect(mask[(y * width + x) * 2 + 1]).toBe(0);
+        }
+        // Well clear of the block, both frames still see the background.
+        for (let x = 20; x < width; x++) {
+          expect(mask[(y * width + x) * 2]).toBe(1);
+          expect(mask[(y * width + x) * 2 + 1]).toBe(1);
+        }
+      }
+
+      // Whatever the fill, it has to stay inside the range the two source
+      // frames actually contain — a NaN or a runaway divide would not.
+      for (let i = 0; i < width * height; i++) {
+        for (let channel = 0; channel < 3; channel++) {
+          const value = result[i * 4 + channel];
+          expect(Number.isFinite(value)).toBe(true);
+          expect(value).toBeGreaterThanOrEqual(0.1);
+          expect(value).toBeLessThanOrEqual(0.85);
+        }
+      }
+    });
+
+    it("stays stable across a run of consecutive frames", async () => {
+      const renderSize: [number, number] = [32, 16];
+      const pipeline = new Pipeline(harness, renderSize);
+      const shift = 2;
+
+      for (let frameIndex = 0; frameIndex < 5; frameIndex++) {
+        const offset = frameIndex * shift;
+        await pipeline.run({
+          currentColorAt: (x, y) => gradient(x - offset, y),
+          previousColorAt: (x, y) => gradient(x - offset + shift, y),
+          depthAt: () => FLAT_DEPTH,
+          motionVectorPixelsAt: () => [-shift, 0],
+          opticalFlowPixelsAt: () => [-shift, 0],
+          reset: frameIndex === 0,
+        });
+      }
+
+      const frameCounter = new Uint32Array((await pipeline.read("state", 1)).buffer);
+      expect(frameCounter[0]).toBe(4);
+
+      const result = await pipeline.interpolatedColor();
+      expect(Array.from(result).every((value) => Number.isFinite(value))).toBe(true);
+
+      // Five frames of accumulation must not have drifted the interior away
+      // from the midpoint between the two source frames.
+      const offset = 4 * shift;
+      for (let y = 0; y < 16; y++) {
+        for (let x = shift; x < 32 - shift; x++) {
+          const expected = gradient(x - offset + shift / 2, y);
+          expect(result[(y * 32 + x) * 4]).toBeCloseTo(expected[0], 4);
+        }
+      }
     });
   });
 });
