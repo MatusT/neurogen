@@ -5,6 +5,7 @@ import {
   evaluateNetwork,
   mulberry32,
   sampleFeatures,
+  snapEndpoints,
   targetBlendWeight,
   FEATURE_COUNT,
 } from "./neural-reference.js";
@@ -19,6 +20,9 @@ const EVALUATION_SEED = 20260910;
 const EVALUATION_SAMPLES = 4096;
 
 const trainedNetwork: NeuralNetworkWeights = blendWeightMlp;
+
+// MLP_HIDDEN in src/wgsl/neural/blend_weight_mlp.wgsl.
+const KERNEL_HIDDEN_CHANNELS = 8;
 
 function meanSquaredError(predict: (features: number[]) => number): number {
   const random = mulberry32(EVALUATION_SEED);
@@ -71,15 +75,18 @@ describe("neural reference", () => {
 
 describe("trained blend weight network", () => {
   // The WGSL kernel derives its layer offsets from this shape, so a retrain
-  // that changed it would silently read the wrong weights on the GPU.
+  // that changed it would silently read the wrong weights on the GPU. The
+  // widths are pinned and not merely checked for self-consistency: the kernel's
+  // MLP_HIDDEN is 8, and a chain that is consistent at some other width would
+  // pass a consistency check while every offset after layer 0 was wrong.
   it("has the shape the kernel assumes", () => {
     const layers = trainedNetwork.layers;
 
-    expect(layers[0].inputs).toBe(FEATURE_COUNT);
-    expect(layers.at(-1)?.outputs).toBe(1);
-    for (const [index, layer] of layers.slice(1).entries()) {
-      expect(layer.inputs).toBe(layers[index].outputs);
-    }
+    expect(layers.map((layer) => [layer.inputs, layer.outputs])).toEqual([
+      [FEATURE_COUNT, KERNEL_HIDDEN_CHANNELS],
+      [KERNEL_HIDDEN_CHANNELS, KERNEL_HIDDEN_CHANNELS],
+      [KERNEL_HIDDEN_CHANNELS, 1],
+    ]);
   });
 
   it("stays inside the blend weight contract's 0..1 range", () => {
@@ -184,7 +191,8 @@ describe("blend weight kernel on the GPU", () => {
   });
 
   function referenceWeight(index: number): number {
-    return evaluateNetwork(trainedNetwork, blendWeightFeatures(fixtureMask(index), fixtureColor(index)));
+    const features = blendWeightFeatures(fixtureMask(index), fixtureColor(index));
+    return snapEndpoints(evaluateNetwork(trainedNetwork, features));
   }
 
   // The test that proves the port, rather than proving it compiles: the same
@@ -196,6 +204,25 @@ describe("blend weight kernel on the GPU", () => {
     }
 
     expect(worstDifference).toBeLessThan(AGREEMENT_TOLERANCE);
+  });
+
+  // The inpainting pyramid turns this weight into coverage, `1 - weight`, and
+  // final_blend.wgsl gates that coverage with `f32(sample.w > 0.0)` — a binary
+  // test, so a hole left at 0.9997 is as covered as a pixel that was never a
+  // hole at all. Its own meaningless colour then survives every reduction and
+  // wins at mip 0, and inpainting degenerates to identity. Nothing short of
+  // exactly 1.0 makes the hole drop out.
+  it("writes exactly 1.0 where neither frame sees the surface", () => {
+    const holeWeights = [];
+    for (let i = 0; i < PIXEL_COUNT; i++) {
+      const [visiblePrevious, visibleCurrent] = fixtureMask(i);
+      if (visiblePrevious === 0 && visibleCurrent === 0) {
+        holeWeights.push(gpuWeights[i]);
+      }
+    }
+
+    expect(holeWeights.length).toBeGreaterThan(0);
+    expect(holeWeights.every((weight) => 1 - weight === 0)).toBe(true);
   });
 
   it("leaves the floats past the image untouched", () => {

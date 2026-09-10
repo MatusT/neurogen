@@ -57,6 +57,11 @@ const MLP_INPUTS: u32 = 3u;
 const MLP_HIDDEN: u32 = 8u;
 const MLP_OUTPUTS: u32 = 1u;
 
+// A layer wider than NnVector's capacity would silently drop channels, and the
+// layer offsets below would still look right. Caught at validation instead.
+const_assert MLP_INPUTS <= NN_MAX_CHANNELS;
+const_assert MLP_HIDDEN <= NN_MAX_CHANNELS;
+
 // Layer offsets per the weight-buffer layout in primitives.wgsl: each layer
 // spans outputs * (inputs + 1) floats, and the next starts where it ends.
 const LAYER0_OFFSET: u32 = 0u;
@@ -64,6 +69,27 @@ const LAYER1_OFFSET: u32 = LAYER0_OFFSET + MLP_HIDDEN * (MLP_INPUTS + 1u);
 const LAYER2_OFFSET: u32 = LAYER1_OFFSET + MLP_HIDDEN * (MLP_HIDDEN + 1u);
 
 const REC709_LUMA: vec3<f32> = vec3<f32>(0.2126, 0.7152, 0.0722);
+
+// How far from 0 and 1 a sigmoid output still counts as the endpoint itself.
+// Same value as the module's FI_EPSILON, redeclared rather than imported so
+// this directory does not depend on the frame-interpolation module.
+const ENDPOINT_EPSILON: f32 = 1e-3;
+
+// A sigmoid never reaches its asymptotes, and both readers of `blendWeight`
+// care about the ends exactly rather than approximately: the inpainting pyramid
+// turns the weight into coverage, `1 - weight`, and gates that coverage with a
+// binary `> 0` test instead of weighting by it. A hole left at 0.9997 is then
+// as covered as a pixel that was never a hole, so its own meaningless colour
+// survives every reduction and wins at mip 0, and inpainting degenerates to
+// identity on exactly the pixels it exists for.
+//
+// So the ends are pulled in by an epsilon and the range re-stretched over them.
+// Affine rather than a snap at a threshold: continuous, so no input can land on
+// opposite sides of a step in f32 and in the f64 CPU reference and make the two
+// disagree.
+fn snapEndpoints(weight: f32) -> f32 {
+    return saturate(weight * (1.0 + 2.0 * ENDPOINT_EPSILON) - ENDPOINT_EPSILON);
+}
 
 fn loadFeatures(index: u32) -> NnVector {
     let mask = disocclusionMask[index];
@@ -87,11 +113,8 @@ fn main(@builtin(global_invocation_id) globalId: vec3<u32>) {
     let hidden1 = nnRelu(nnLinear(hidden0, LAYER1_OFFSET, MLP_HIDDEN));
     let output = nnLinear(hidden1, LAYER2_OFFSET, MLP_OUTPUTS);
 
-    // Sigmoid is what keeps the contract's 0..1 range an invariant of the
-    // network rather than a clamp applied after it. Unlike the classical
-    // formula's exact 0 and 1 it cannot quite reach the ends, so a hole keeps
-    // a sliver of its own colour as coverage in the inpainting pyramid, and a
-    // pixel both frames see is not bit-exactly excluded from inpainting. At
-    // these weights that is 3e-4 and 2e-3 of the range respectively.
-    blendWeight[index] = nnSigmoid(output.values[0]);
+    // Sigmoid keeps the contract's 0..1 range an invariant of the network
+    // rather than a clamp applied after it; snapEndpoints makes the ends
+    // reachable.
+    blendWeight[index] = snapEndpoints(nnSigmoid(output.values[0]));
 }

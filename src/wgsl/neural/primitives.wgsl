@@ -42,8 +42,10 @@
 
 // A layer's width bound. Fixed because WGSL has no dynamically sized locals,
 // and small because these are per-pixel networks running once per pixel per
-// frame: a wider layer wants a tiled matmul, not this. A network exceeding it
-// writes past `values` — the bound is the primitive's contract, not a guess.
+// frame: a wider layer wants a tiled matmul, not this. WGSL bounds-checks, so a
+// network exceeding it does not corrupt anything — it silently computes with
+// the wrong channels, which is worse to debug. Networks should assert their
+// widths against this at validation time, as blend_weight_mlp.wgsl does.
 const NN_MAX_CHANNELS: u32 = 8u;
 
 struct NnVector {

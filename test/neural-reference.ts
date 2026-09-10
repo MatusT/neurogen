@@ -104,6 +104,20 @@ export function blendWeightFeatures(mask: readonly number[], color: readonly num
   return [mask[0], mask[1], Math.min(1, Math.max(0, luma))];
 }
 
+// Mirrors `snapEndpoints` in src/wgsl/neural/blend_weight_mlp.wgsl, which pulls
+// the sigmoid's unreachable ends onto exact 0 and 1 because the readers of
+// `blendWeight` test the ends exactly.
+//
+// Applied around `evaluateNetwork` by the callers that compare against the
+// kernel, never inside it: the training objective already targets exact 0 and 1
+// at the endpoints, so folding this into the network's own forward pass would
+// change what the optimiser fits and therefore the checked-in weights.
+const ENDPOINT_EPSILON = 1e-3;
+
+export function snapEndpoints(weight: number): number {
+  return Math.min(1, Math.max(0, weight * (1 + 2 * ENDPOINT_EPSILON) - ENDPOINT_EPSILON));
+}
+
 // FI_EPSILON from src/wgsl/frameinterpolation/params.wgsl.
 const FI_EPSILON = 1e-3;
 
