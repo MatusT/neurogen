@@ -6,7 +6,7 @@
 // search actually produced, so it removes outliers without inventing motion.
 //
 // Runs after the search at every level; at level 0 its destination is the
-// module's opticalFlowVectorField output.
+// module's opticalFlowVectorField and opticalFlowValidity output.
 //
 // Dispatch: (ceil(flowW/16), ceil(flowH/4)) for the level's flow grid.
 
@@ -15,6 +15,8 @@
 
 @group(0) @binding(1) var<storage, read> flowIn: array<vec2<i32>>;
 @group(0) @binding(2) var<storage, read_write> flowOut: array<vec2<i32>>;
+@group(0) @binding(3) var<storage, read> validityIn: array<u32>;
+@group(0) @binding(4) var<storage, read_write> validityOut: array<u32>;
 
 const FILTER_TAPS: i32 = 9;
 // The winner's index rides in the low nibble so one min() carries both the
@@ -29,14 +31,18 @@ fn main(@builtin(global_invocation_id) globalId: vec3<u32>) {
     if (!ofInBounds(pos, size)) { return; }
 
     var taps: array<vec2<i32>, FILTER_TAPS>;
+    var tapValidity: array<u32, FILTER_TAPS>;
     var tap = 0;
     for (var x = -1; x < 2; x++) {
         for (var y = -1; y < 2; y++) {
             let neighbour = pos + vec2<i32>(x, y);
             if (ofInBounds(neighbour, size)) {
-                taps[tap] = flowIn[ofFlatIndex(neighbour, size)];
+                let index = ofFlatIndex(neighbour, size);
+                taps[tap] = flowIn[index];
+                tapValidity[tap] = validityIn[index];
             } else {
                 taps[tap] = vec2<i32>(0);
+                tapValidity[tap] = 0u;
             }
             tap++;
         }
@@ -53,5 +59,11 @@ fn main(@builtin(global_invocation_id) globalId: vec3<u32>) {
         best = min((score << FILTER_SCORE_SHIFT) | u32(i), best);
     }
 
-    flowOut[ofFlatIndex(pos, size)] = taps[best & FILTER_INDEX_MASK];
+    // The winner is a neighbour's vector, not this cell's, so its validity has
+    // to travel with it — rescoring here would judge a match this cell never
+    // made.
+    let winner = best & FILTER_INDEX_MASK;
+    let index = ofFlatIndex(pos, size);
+    flowOut[index] = taps[winner];
+    validityOut[index] = tapValidity[winner];
 }

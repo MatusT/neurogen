@@ -19,6 +19,7 @@
 
 @group(0) @binding(3) var<storage, read_write> opticalFlow: array<vec2<i32>>;
 @group(0) @binding(4) var<storage, read> sceneChange: OpticalFlowSceneChange;
+@group(0) @binding(5) var<storage, read_write> flowValidity: array<u32>;
 
 // CompareSize: the block edge matched per motion vector, four lumas per u32.
 const COMPARE_SIZE: i32 = 8;
@@ -36,6 +37,16 @@ const SEARCH_HEIGHT: i32 = COMPARE_SIZE + SEARCH_RADIUS * 2;
 // the best match and the tie-break falls through to the coordinate bits.
 const CANDIDATE_SAD_SHIFT: u32 = 16u;
 const SEARCH_COORD_MASK: u32 = 0xfu;
+
+// A cell is marked usable when its winning block matched to within this mean
+// absolute difference per pixel, on the 0..255 luma scale. Under 5% of full
+// range: well clear of 8-bit quantisation, well under the residual left by a
+// disocclusion, a lighting change, or a false match on an aliased edge. This
+// only judges the residual, so a featureless block still reads usable — its
+// vector is arbitrary but no worse than the alternatives, and the consumer
+// has neighbourhood agreement to fall back on.
+const VALID_MEAN_ABS_DIFF: u32 = 12u;
+const VALID_SAD_LIMIT: u32 = VALID_MEAN_ABS_DIFF * u32(COMPARE_SIZE * COMPARE_SIZE);
 
 var<workgroup> blockPixels: array<array<u32, COMPARE_WORDS>, COMPARE_SIZE>;
 var<workgroup> searchWindow: array<u32, SEARCH_WIDTH * SEARCH_HEIGHT>;
@@ -83,10 +94,14 @@ fn loadFlow(pos: vec2<i32>, size: vec2<i32>) -> vec2<i32> {
     return opticalFlow[ofFlatIndex(pos, size)];
 }
 
-fn storeFlow(pos: vec2<i32>, motionVector: vec2<i32>, size: vec2<i32>) {
+// Vector and validity are written together so the two channels can never
+// disagree about which search produced them.
+fn storeCell(pos: vec2<i32>, motionVector: vec2<i32>, valid: u32, size: vec2<i32>) {
     if (!ofInBounds(pos, size)) { return; }
 
-    opticalFlow[ofFlatIndex(pos, size)] = motionVector;
+    let index = ofFlatIndex(pos, size);
+    opticalFlow[index] = motionVector;
+    flowValidity[index] = valid;
 }
 
 // FFX_OPTICALFLOW_FIX_TOP_LEFT_BIAS: distance from the window centre sits
@@ -163,8 +178,9 @@ fn main(@builtin(workgroup_id) groupIdIn: vec3<u32>, @builtin(local_invocation_i
     if (localIndex == 0u) { sceneChanged = sceneChange.detected; }
     if (workgroupUniformLoad(&sceneChanged) != 0u) {
         // Exactly the four invocations that map one-to-one onto the cells.
+        // Nothing was matched, so the zero vector is a reset, not motion.
         if ((mapping.searchId.y & 7) == 0 && (mapping.searchId.x & 1) == 0) {
-            storeFlow(mapping.pxPos >> vec2<u32>(3u), vec2<i32>(0), flowSize);
+            storeCell(mapping.pxPos >> vec2<u32>(3u), vec2<i32>(0), 0u, flowSize);
         }
         return;
     }
@@ -203,20 +219,23 @@ fn main(@builtin(workgroup_id) groupIdIn: vec3<u32>, @builtin(local_invocation_i
             let bestCandidate = reduceMin(localIndex, laneMin);
 
             var motionVector = prediction + decodeSearchCoord(bestCandidate);
+            var matchSad = bestCandidate >> CANDIDATE_SAD_SHIFT;
 
             // Local-search fallback: at the finest level, a block that already
             // matches where it sits at least as well as anywhere in the window
-            // is held still rather than dragged onto a false match.
+            // is held still rather than dragged onto a false match. The
+            // stationary residual is then what validity has to judge.
             let cellStillSad = reduceSum(localIndex, select(0u, stillSad, mapping.cellId == cellY * BLOCK_COUNT + cellX));
-            if (params.pyramidLevel == 0u && cellStillSad <= (bestCandidate >> CANDIDATE_SAD_SHIFT)) {
+            if (params.pyramidLevel == 0u && cellStillSad <= matchSad) {
                 motionVector = vec2<i32>(0);
+                matchSad = cellStillSad;
             }
 
             // Both reductions broadcast, and the prediction came from a single
             // address, so motionVector is workgroup-uniform: one invocation
             // stores it instead of racing 64 identical writes.
             if (localIndex == 0u) {
-                storeFlow(cellPos, motionVector, flowSize);
+                storeCell(cellPos, motionVector, u32(matchSad < VALID_SAD_LIMIT), flowSize);
             }
         }
     }
