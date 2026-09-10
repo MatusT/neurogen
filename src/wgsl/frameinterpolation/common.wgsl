@@ -300,5 +300,8 @@ fn fiPyramidMipOffset(level: i32) -> u32 {
 // chooses the level, and one past the end of the table would address memory
 // belonging to no mip and silently produce wrong pixels rather than fail.
 fn fiInpaintingMipLevel() -> i32 {
-    return min(i32(params.inpaintingMipLevel), FI_INPAINTING_MIP_COUNT - 1);
+    // Clamp in u32 space first: converting an out-of-range mip level to i32
+    // before clamping is a bit-reinterpretation, so a large value can land
+    // negative and slip past a min() taken after the cast.
+    return i32(min(params.inpaintingMipLevel, u32(FI_INPAINTING_MIP_COUNT - 1)));
 }
