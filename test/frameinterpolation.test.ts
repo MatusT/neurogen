@@ -730,10 +730,15 @@ describe("frame interpolation", () => {
 
     it("treats a depth gap below the Ksep separation as the same surface", async () => {
       const renderSize: [number, number] = [8, 4];
-      // 2e-5 of device depth is about 8e-6 of view-space depth here, under the
-      // ~2.2e-5 the Ksep threshold requires before two depths count as separate
-      // surfaces — so this must read as visible, not disoccluded.
-      const mask = await runDisocclusionMask(renderSize, () => 0.5, () => 0.5 - 2e-5);
+      // 6e-5 of device depth is about 2.4e-5 of view-space depth here, under the
+      // ~4.0e-5 the Ksep threshold requires before two depths count as separate
+      // surfaces, so this must read as visible rather than disoccluded.
+      //
+      // The value discriminates deliberately: the unreachable
+      // `ComputeSampleDepthClip` variant in AMD's source, which the task brief
+      // quoted, would require only ~1.3e-5 here and would call this a
+      // disocclusion. If this ever starts failing, the formula was swapped.
+      const mask = await runDisocclusionMask(renderSize, () => 0.5, () => 0.5 - 6e-5);
 
       expect(Array.from(mask).every((component) => component === 1)).toBe(true);
     });
@@ -890,8 +895,8 @@ describe("frame interpolation", () => {
     // No two columns alike, so a one-pixel misalignment shows up, and offset
     // far enough from zero that a shifted lookup stays a valid colour.
     const gradient = (x: number, y: number): [number, number, number] => [
-      (x + 16) / 64,
-      (y + 16) / 64,
+      (x + 32) / 128,
+      (y + 32) / 128,
       0.25,
     ];
 
@@ -1089,8 +1094,12 @@ describe("frame interpolation", () => {
       const renderSize: [number, number] = [32, 16];
       const pipeline = new Pipeline(harness, renderSize);
       const shift = 2;
+      // Long enough to leave the window where the game vectors are trusted
+      // unconditionally, so the last frames go through the similarity scoring
+      // against the optical flow that the shorter fixtures never reach.
+      const movingFrames = 11;
 
-      for (let frameIndex = 0; frameIndex < 5; frameIndex++) {
+      for (let frameIndex = 0; frameIndex < movingFrames; frameIndex++) {
         const offset = frameIndex * shift;
         await pipeline.run({
           currentColorAt: (x, y) => gradient(x - offset, y),
@@ -1103,18 +1112,39 @@ describe("frame interpolation", () => {
       }
 
       const frameCounter = new Uint32Array((await pipeline.read("state", 1)).buffer);
-      expect(frameCounter[0]).toBe(4);
+      expect(frameCounter[0]).toBe(movingFrames - 1);
 
-      const result = await pipeline.interpolatedColor();
-      expect(Array.from(result).every((value) => Number.isFinite(value))).toBe(true);
+      const movingResult = await pipeline.interpolatedColor();
+      expect(Array.from(movingResult).every((value) => Number.isFinite(value))).toBe(true);
 
-      // Five frames of accumulation must not have drifted the interior away
+      // Eleven frames of accumulation must not have drifted the interior away
       // from the midpoint between the two source frames.
-      const offset = 4 * shift;
+      const offset = (movingFrames - 1) * shift;
       for (let y = 0; y < 16; y++) {
         for (let x = shift; x < 32 - shift; x++) {
           const expected = gradient(x - offset + shift / 2, y);
-          expect(result[(y * 32 + x) * 4]).toBeCloseTo(expected[0], 4);
+          expect(movingResult[(y * 32 + x) * 4]).toBeCloseTo(expected[0], 4);
+        }
+      }
+
+      // Now stop dead on the same content. Every frame so far carried identical
+      // motion, so a stale field entry would have been indistinguishable from a
+      // fresh one; against a stationary frame it is not. Without setup's clear
+      // the previous frame's entry ties on priority and wins the half-float
+      // tie-break — a negative coefficient has the high bit set — dragging the
+      // gather a pixel sideways and breaking this passthrough.
+      const settled = (x: number, y: number) => gradient(x - offset, y);
+      await pipeline.run({
+        currentColorAt: settled,
+        previousColorAt: settled,
+        depthAt: () => FLAT_DEPTH,
+        motionVectorPixelsAt: () => [0, 0],
+      });
+
+      const stationaryResult = await pipeline.interpolatedColor();
+      for (let y = 0; y < 16; y++) {
+        for (let x = 0; x < 32; x++) {
+          expectColorClose(colorAt(stationaryResult, 32, x, y), settled(x, y));
         }
       }
     });

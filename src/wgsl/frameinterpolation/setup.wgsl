@@ -4,11 +4,15 @@
 // schedules as host-side clear jobs rather than shader work.
 //
 // TEMPORAL RESOURCE OWNERSHIP. This pass is the sole owner of every per-frame
-// reset in the module, and must run first in `prepare()`, before any scatter.
-// The resources below are accumulated into by atomic max/min from many
-// invocations, so a stale value from the previous frame does not get
-// overwritten — it competes, and can win. They cannot be left to their writers
-// to initialise.
+// reset in the module. The resources below are accumulated into by atomic
+// max/min from many invocations, so a stale value from the previous frame does
+// not get overwritten — it competes, and can win. They cannot be left to their
+// writers to initialise.
+//
+// ORDERING. First of this module's passes, but *after* the optical flow module
+// has published this frame's `sceneChangeDetected`, which this pass reads. Run
+// before it and the scene-cut fallback fires a frame late — on the verdict for
+// the previous frame — which is the artefact the fallback exists to prevent.
 //
 // Not cleared here, deliberately: the disocclusion mask, the preliminary blend
 // colour, the blend weight, the inpainting pyramid and the interpolated colour
