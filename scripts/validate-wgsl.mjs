@@ -3,7 +3,7 @@
 // emits the composed source as a generated TS module — the same artifact
 // that gets validated is what orchestration code imports and ships.
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 
 const SRC_DIR = resolve("src/wgsl");
@@ -55,6 +55,11 @@ function compose(file) {
     .map((f) => stripImportHeaders(readFileSync(f, "utf8")))
     .join("\n\n");
 }
+
+// Rebuilt from scratch every run so a deleted/renamed entry point can't
+// leave its stale composed output importable (and shippable) behind.
+rmSync(VALIDATE_DIR, { recursive: true, force: true });
+rmSync(GEN_DIR, { recursive: true, force: true });
 
 const allFiles = listWgslFiles(SRC_DIR);
 const entryFiles = allFiles.filter((f) => ENTRY_RE.test(readFileSync(f, "utf8")));
