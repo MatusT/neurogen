@@ -136,6 +136,13 @@ fn computeInterpolatedColor(pos: vec2<i32>, weight: ptr<function, f32>) -> vec3<
     if (previousGame.w == 0.0) { color = currentGame.rgb; }
     else if (currentGame.w == 0.0) { color = previousGame.rgb; }
 
+    // Subsumed by the disocclusion test above as long as the interpolation rect
+    // is the whole frame: a gather only empties when every tap left the frame,
+    // which means the reprojected UV left it too, which already zeroed both
+    // disocclusion channels. Kept because AMD's version is not redundant — its
+    // gather tests the letterboxed interpolation rect while the UV test covers
+    // the full frame — and because a motion vector from a source other than
+    // this module's scatter can break the implication.
     if (previousGame.w == 0.0 && currentGame.w == 0.0) { *weight = 1.0; }
 
     var opticalFlowT = 0.5;

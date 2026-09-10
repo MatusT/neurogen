@@ -77,6 +77,29 @@ function unpackHalf(bits: number): number {
   return sign * (mantissa + 1024) * 2 ** (exponent - 25);
 }
 
+function packHalf(value: number): number {
+  const sign = value < 0 ? 0x8000 : 0;
+  const magnitude = Math.abs(value);
+  if (magnitude === 0) return sign;
+  const exponent = Math.floor(Math.log2(magnitude));
+  const mantissa = Math.round((magnitude / 2 ** exponent - 1) * 1024);
+  return sign | ((exponent + 15) << 10) | (mantissa & 0x3ff);
+}
+
+// Mirrors fiPackVectorField. Priority in the high bits, the half-float
+// coefficient in the low 16, so an atomic max resolves on priority first.
+function packVectorField(
+  highPriority: number,
+  lowPriority: number,
+  [x, y]: [number, number],
+): [number, number] {
+  const priority = (0x80000000 | (highPriority << 21) | (lowPriority << 16)) >>> 0;
+  return [(priority | packHalf(x)) >>> 0, (priority | packHalf(y)) >>> 0];
+}
+
+// A stationary, valid, primary entry — both coefficients zero.
+const STATIONARY_PRIMARY = packVectorField(512, 31, [0, 0])[0];
+
 interface VectorFieldEntry {
   motionVector: [number, number];
   highPriority: number;
@@ -661,10 +684,6 @@ describe("frame interpolation", () => {
   });
 
   describe("disocclusion mask", () => {
-    // A stationary, valid, primary field entry — the only shape these fixtures
-    // need, so the half-float coefficients are both zero.
-    const STATIONARY_PRIMARY = (0x80000000 | (512 << 21) | (31 << 16)) >>> 0;
-
     async function runDisocclusionMask(
       renderSize: [number, number],
       interpolatedDepthAt: (x: number, y: number) => number,
@@ -745,6 +764,80 @@ describe("frame interpolation", () => {
       const mask = await runDisocclusionMask(renderSize, () => 0.5, () => 0.5 - 6e-5);
 
       expect(Array.from(mask).every((component) => component === 1)).toBe(true);
+    });
+  });
+
+  describe("preliminary blend, as the blendWeight writer", () => {
+    const RENDER_SIZE: [number, number] = [8, 4];
+
+    // Drives the writer directly so the two paths that produce a non-zero
+    // weight can be reached on demand. Going through the full pipeline cannot
+    // do it: the blend reads the *scattered* field, so an outsized input motion
+    // vector lands nothing on screen and the blend reads a zero vector instead.
+    async function runPreliminaryBlend(
+      maskAt: (x: number, y: number) => [number, number],
+      fieldMotionVector: [number, number],
+    ): Promise<Float32Array> {
+      const [width, height] = RENDER_SIZE;
+      const pixels = width * height;
+
+      const maskData = new Float32Array(pixels * 2);
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          maskData.set(maskAt(x, y), (y * width + x) * 2);
+        }
+      }
+
+      const packed = packVectorField(512, 31, fieldMotionVector);
+      const fieldData = new Uint32Array(pixels * 2);
+      for (let index = 0; index < pixels; index++) {
+        fieldData.set(packed, index * 2);
+      }
+
+      const color = colorTexture(harness, RENDER_SIZE, () => [0.4, 0.5, 0.6]).createView();
+      const blendWeight = harness.createStorageBuffer(new Float32Array(pixels));
+
+      await harness.dispatch(
+        harness.createComputePipeline(preliminaryBlendWgsl),
+        [
+          { buffer: harness.createUniformBuffer(frameInterpolationParams({ renderSize: RENDER_SIZE })) },
+          color,
+          color,
+          { buffer: harness.createStorageBuffer(fieldData) },
+          { buffer: harness.createStorageBuffer(new Uint32Array(pixels * 2)) },
+          { buffer: harness.createStorageBuffer(maskData) },
+          { buffer: harness.createStorageBuffer(new Float32Array(pixels * 4)) },
+          { buffer: blendWeight },
+          // Any frame but the first, or the scene-cut fallback takes over and
+          // writes weight 0 unconditionally.
+          { buffer: harness.createStorageBuffer(new Uint32Array([5])) },
+        ],
+        [groupCount(width), groupCount(height)],
+      );
+
+      return new Float32Array(await harness.readBuffer(blendWeight, pixels * 4));
+    }
+
+    it("marks a pixel hidden in both frames as fully inpainted", async () => {
+      // Visible in neither direction on the left, visible in both on the right.
+      const weights = await runPreliminaryBlend(
+        (x) => (x < 4 ? [0, 0] : [1, 1]),
+        [0, 0],
+      );
+
+      for (let y = 0; y < 4; y++) {
+        for (let x = 0; x < 8; x++) {
+          expect(weights[y * 8 + x]).toBe(x < 4 ? 1 : 0);
+        }
+      }
+    });
+
+    it("marks a pixel whose every source tap falls off frame as fully inpainted", async () => {
+      // A 2.0 UV vector puts both reprojections beyond the frame in opposite
+      // directions, so neither gather retains a single tap.
+      const weights = await runPreliminaryBlend(() => [1, 1], [2, 0]);
+
+      expect(Array.from(weights).every((weight) => weight === 1)).toBe(true);
     });
   });
 
@@ -1090,6 +1183,58 @@ describe("frame interpolation", () => {
           expect(Number.isFinite(value)).toBe(true);
           expect(value).toBeGreaterThanOrEqual(0.1);
           expect(value).toBeLessThanOrEqual(0.85);
+        }
+      }
+    });
+
+    it("raises the blend weight where two movers hide a pixel in both frames", async () => {
+      const renderSize: [number, number] = [32, 16];
+      const [width, height] = renderSize;
+      const shift = 8;
+      const background: [number, number, number] = [0.8, 0.15, 0.15];
+      const nearObject: [number, number, number] = [0.15, 0.8, 0.15];
+
+      // Two near blocks, both sliding right by `shift`. The trailing block
+      // vacates a span that the leading block's previous-frame position covers,
+      // so the pixels between them are hidden by one block in the previous
+      // frame and by the other in the current frame — hidden in both, which no
+      // single mover can arrange.
+      const leading = 16;
+      const trailing = 8;
+      const spans = (origin: number) => (x: number) =>
+        (x >= origin && x < origin + 4) || (x >= origin + shift && x < origin + shift + 4);
+      const inCurrentObject = (x: number) => spans(trailing)(x);
+      const currentColorAt = (x: number): [number, number, number] =>
+        inCurrentObject(x) ? nearObject : background;
+      const previousColorAt = (x: number): [number, number, number] =>
+        inCurrentObject(x + shift) ? nearObject : background;
+
+      const pipeline = new Pipeline(harness, renderSize);
+      const frame = {
+        currentColorAt,
+        previousColorAt,
+        depthAt: (x: number) => (inCurrentObject(x) ? 0.2 : 0.9),
+        motionVectorPixelsAt: (x: number): [number, number] =>
+          inCurrentObject(x) ? [-shift, 0] : [0, 0],
+      };
+      await pipeline.run({ ...frame, reset: true });
+      await pipeline.run(frame);
+
+      const weights = await pipeline.read("blendWeight", width * height);
+      const mask = await pipeline.read("disocclusionMask", width * height * 2);
+
+      // Each block vacates two columns that the other block's previous-frame
+      // position still covers: the trailing block leaves 9..10, the leading one
+      // 17..18. Those are the pixels neither frame contains.
+      const hiddenInBoth = new Set([9, 10, leading + 1, leading + 2]);
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const index = y * width + x;
+          expect(weights[index]).toBe(hiddenInBoth.has(x) ? 1 : 0);
+          // The weight is exactly the both-channels-disoccluded condition, and
+          // nothing else in the classical path raises it.
+          const bothHidden = mask[index * 2] === 0 && mask[index * 2 + 1] === 0;
+          expect(bothHidden).toBe(hiddenInBoth.has(x));
         }
       }
     });
