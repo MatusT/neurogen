@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>neurogen — frame generation demo</title>
+    <!-- Empty rather than absent: a missing favicon is a 404 in the console,
+         and the demo's console is meant to be evidence that nothing failed. -->
+    <link rel="icon" href="data:," />
+    <style>
+      :root { color-scheme: dark; }
+      body {
+        margin: 0;
+        padding: 24px;
+        background: #101216;
+        color: #d8dde5;
+        font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      h1 { font-size: 16px; font-weight: 600; margin: 0 0 4px; }
+      p.lede { margin: 0 0 16px; color: #8b95a5; max-width: 70ch; }
+      canvas { display: block; width: 100%; max-width: 1280px; background: #000; border-radius: 4px; }
+      .controls { display: flex; flex-wrap: wrap; gap: 20px; align-items: center; margin: 16px 0; }
+      label.toggle { display: flex; gap: 8px; align-items: center; cursor: pointer; user-select: none; }
+      input[type="checkbox"] { width: 18px; height: 18px; }
+      button { font: inherit; padding: 6px 12px; border-radius: 4px; border: 1px solid #39414f; background: #1b1f27; color: inherit; cursor: pointer; }
+      button:disabled { opacity: 0.5; cursor: default; }
+      dl.hud { display: grid; grid-template-columns: max-content max-content; gap: 2px 16px; margin: 0; }
+      dl.hud dt { color: #8b95a5; }
+      dl.hud dd { margin: 0; }
+      pre { background: #171b22; padding: 12px; border-radius: 4px; overflow-x: auto; white-space: pre; }
+      #status { color: #e2a04a; }
+    </style>
+  </head>
+  <body>
+    <h1>neurogen — frame generation demo</h1>
+    <p class="lede">
+      The scene renders a real frame every second display refresh. With frame generation
+      on, the refresh in between shows a frame neurogen interpolated from the two real
+      ones; with it off, the previous real frame is held. Same real frame rate either way.
+    </p>
+
+    <canvas id="canvas"></canvas>
+
+    <div class="controls">
+      <label class="toggle">
+        <input type="checkbox" id="framegen" checked />
+        frame generation
+      </label>
+      <button id="neural">install neural blendWeight writer</button>
+      <button id="verify">verify interpolated frame timing</button>
+      <span id="status"></span>
+    </div>
+
+    <dl class="hud">
+      <dt>frame generation</dt><dd id="hud-framegen">—</dd>
+      <dt>blendWeight writer</dt><dd id="hud-neural">—</dd>
+      <dt>real frames</dt><dd id="hud-real">—</dd>
+      <dt>now presenting</dt><dd id="hud-presenting">—</dd>
+      <dt>presented / real fps</dt><dd id="hud-fps">—</dd>
+    </dl>
+
+    <pre id="report">Press "verify interpolated frame timing" to measure where the interpolated frame's
+moving object actually sits between the two real frames it was generated from.</pre>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
