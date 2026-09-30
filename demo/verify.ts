@@ -28,6 +28,8 @@
 
 import {
   FrameGenerator,
+  createInterpolator,
+  type InterpolationBackend,
   INTERPOLATED_TEXTURE_FORMAT,
   type NeuralNetworkWeights,
 } from "../src/index.js";
@@ -50,7 +52,7 @@ const COPY_ROW_ALIGNMENT = 256;
 const BYTES_PER_HALF4 = 8;
 const CHANNELS = 4;
 
-// Only the exponent range a frame of linear LDR colour spans.
+// Preserve nonfinite values so quality checks can reject invalid GPU output.
 function decodeHalf(bits: number): number {
   const sign = bits >>> 15 ? -1 : 1;
   const exponent = (bits >>> 10) & 0x1f;
@@ -58,11 +60,14 @@ function decodeHalf(bits: number): number {
   if (exponent === 0) {
     return sign * mantissa * 2 ** -24;
   }
+  if (exponent === 31) {
+    return mantissa === 0 ? sign * Infinity : NaN;
+  }
 
   return sign * (mantissa + 1024) * 2 ** (exponent - 25);
 }
 
-async function readColor(device: GPUDevice, texture: GPUTexture): Promise<Float32Array> {
+export async function readColor(device: GPUDevice, texture: GPUTexture): Promise<Float32Array> {
   const { width, height } = texture;
   // decodeHalf and BYTES_PER_HALF4 only describe this one format. The demo's
   // own colour targets are in it deliberately, so one decoder serves both them
@@ -427,6 +432,7 @@ export function midpointFailures(
 }
 
 export interface MidpointMeasurement {
+  backend: InterpolationBackend;
   size: readonly [number, number];
   frames: number;
   neural: boolean;
@@ -450,6 +456,7 @@ export interface MidpointMeasurement {
 
 export interface MidpointOptions {
   size: readonly [number, number];
+  backend?: InterpolationBackend;
   neuralWeights?: NeuralNetworkWeights;
 }
 
@@ -460,11 +467,14 @@ export async function measureMidpointTiming(
   options: MidpointOptions,
 ): Promise<MidpointMeasurement> {
   const { size, neuralWeights } = options;
+  const generator = createInterpolator({ device, backend: options.backend ?? "fsr3" });
+  if (neuralWeights && !(generator instanceof FrameGenerator)) {
+    throw new Error("Neural blend weights are supported by the FSR3 backend only");
+  }
   const projection = projectionFor(size);
   const gbuffer = new GBuffer(device, size, projection);
-  const generator = new FrameGenerator({ device });
 
-  if (neuralWeights) {
+  if (neuralWeights && generator instanceof FrameGenerator) {
     generator.installNeuralBlendWeight(neuralWeights);
   }
   generator.configure({ ...PROJECTION, renderWidth: size[0], renderHeight: size[1] });
@@ -493,6 +503,7 @@ export async function measureMidpointTiming(
 
   return {
     size,
+    backend: options.backend ?? "fsr3",
     frames: SETTLED_FRAMES,
     neural: Boolean(neuralWeights),
     pixelsPerRealFrame: markerGeometry(projection, size).pixelsPerFrame,
@@ -515,7 +526,7 @@ export function formatMeasurement(m: MidpointMeasurement): string {
   const px = (value: number) => value.toFixed(2).padStart(8);
 
   return [
-    `${m.size[0]}x${m.size[1]}, ${m.frames} real frames, neural blend weight ${m.neural ? "on" : "off"}`,
+    `${m.size[0]}x${m.size[1]}, ${m.frames} real frames, ${m.backend}, neural blend weight ${m.neural ? "on" : "off"}`,
     `marker velocity          ${px(m.pixelsPerRealFrame)} px / real frame`,
     `real frame n-1 centroid  ${px(m.previous.centroid)} px   (scene says ${m.expected.previous.toFixed(2)})`,
     `real frame n   centroid  ${px(m.current.centroid)} px   (scene says ${m.expected.current.toFixed(2)})`,

@@ -21,7 +21,7 @@
       .controls { display: flex; flex-wrap: wrap; gap: 20px; align-items: center; margin: 16px 0; }
       label.toggle { display: flex; gap: 8px; align-items: center; cursor: pointer; user-select: none; }
       input[type="checkbox"] { width: 18px; height: 18px; }
-      button { font: inherit; padding: 6px 12px; border-radius: 4px; border: 1px solid #39414f; background: #1b1f27; color: inherit; cursor: pointer; }
+      button, select { font: inherit; padding: 6px 12px; border-radius: 4px; border: 1px solid #39414f; background: #1b1f27; color: inherit; cursor: pointer; }
       button:disabled { opacity: 0.5; cursor: default; }
       dl.hud { display: grid; grid-template-columns: max-content max-content; gap: 2px 16px; margin: 0; }
       dl.hud dt { color: #8b95a5; }
@@ -34,13 +34,19 @@
     <h1>neurogen — frame generation demo</h1>
     <p class="lede">
       The scene renders a real frame every second display refresh. With frame generation
-      on, the refresh in between shows a frame neurogen interpolated from the two real
-      ones; with it off, the previous real frame is held. Same real frame rate either way.
+      on, the selected algorithm interpolates a midpoint between two real frames.
+      With it off, the latest real frame is held. Same real frame rate either way.
     </p>
 
     <canvas id="canvas"></canvas>
 
     <div class="controls">
+      <label>algorithm
+        <select id="backend">
+          <option value="fsr3">AMD FSR 3 interpolation</option>
+          <option value="hydra">Huawei BASIC interpolation (experimental)</option>
+        </select>
+      </label>
       <label class="toggle">
         <input type="checkbox" id="framegen" checked />
         frame generation

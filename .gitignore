@@ -3,3 +3,5 @@ dist/
 .wgsl-build/
 src/wgsl/generated/
 *.log
+artifacts/quality/
+reference/hydra/translated/

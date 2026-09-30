@@ -10,7 +10,7 @@
 // whole comparison — and why frame generation costs a frame of latency, since
 // the frame between n-1 and n cannot exist before n has been rendered.
 
-import { FrameGenerator } from "../src/index.js";
+import { FrameGenerator, createInterpolator, type InterpolationBackend } from "../src/index.js";
 // The one thing that is not behind the entry point: `tsc` does not copy the
 // weight asset into `dist/`, so the library documents it as a file a consumer
 // bundler-imports or fetches.
@@ -91,7 +91,9 @@ function run(device: GPUDevice, context: GPUCanvasContext, format: GPUTextureFor
   const projection = projectionFor(RENDER_SIZE);
   const gbuffer = new GBuffer(device, RENDER_SIZE, projection);
   const presenter = new Presenter(device, format);
-  const generator = new FrameGenerator({ device });
+  const backendInput = element<HTMLSelectElement>("backend");
+  let backend = backendInput.value as InterpolationBackend;
+  let generator = createInterpolator({ device, backend });
   generator.configure({ ...PROJECTION, renderWidth: width, renderHeight: height });
 
   const hud = {
@@ -125,11 +127,27 @@ function run(device: GPUDevice, context: GPUCanvasContext, format: GPUTextureFor
     hud.framegen.textContent = mode === FrameGen.On ? "on" : "off — real frames held";
   });
   hud.framegen.textContent = mode === FrameGen.On ? "on" : "off — real frames held";
-  hud.neural.textContent = "classical occlusion formula";
+  neuralButton.disabled = backend === "hydra";
+  hud.neural.textContent = backend === "hydra" ? "Hydra optical flow + reprojection" : "classical occlusion formula";
+
+  backendInput.addEventListener("change", () => {
+    backend = backendInput.value as InterpolationBackend;
+    generator.destroy();
+    generator = createInterpolator({ device, backend });
+    generator.configure({ ...PROJECTION, renderWidth: width, renderHeight: height });
+    if (generator instanceof FrameGenerator && neural) generator.installNeuralBlendWeight(blendWeightAsset);
+    // Discard the old backend's output and wait for a fresh real-frame pair.
+    enabled = enabledFrom(realFrame);
+    neuralButton.disabled = backend === "hydra" || neural;
+    hud.neural.textContent = backend === "hydra" ? "Hydra optical flow + reprojection" :
+      neural ? `neural (${blendWeightAsset.name})` : "classical occlusion formula";
+    report.textContent = "Backend changed. Verify timing to measure the selected algorithm.";
+  });
 
   neuralButton.addEventListener("click", () => {
     // The library keeps the installed network across a reconfigure and has no
     // uninstall, so this is a one-way switch rather than a checkbox.
+    if (!(generator instanceof FrameGenerator)) return;
     generator.installNeuralBlendWeight(blendWeightAsset);
     neural = true;
     neuralButton.disabled = true;
@@ -139,6 +157,7 @@ function run(device: GPUDevice, context: GPUCanvasContext, format: GPUTextureFor
   verifyButton.addEventListener("click", () => {
     paused = true;
     verifyButton.disabled = true;
+    backendInput.disabled = true;
     report.textContent = "measuring...";
 
     // Its own generator and render targets, so the live loop's history is not
@@ -147,7 +166,8 @@ function run(device: GPUDevice, context: GPUCanvasContext, format: GPUTextureFor
     // the figures describe the pipeline you are actually watching.
     measureMidpointTiming(device, {
       size: RENDER_SIZE,
-      neuralWeights: neural ? blendWeightAsset : undefined,
+      backend,
+      neuralWeights: backend === "fsr3" && neural ? blendWeightAsset : undefined,
     })
       .then((measurement) => {
         report.textContent = formatMeasurement(measurement);
@@ -164,6 +184,7 @@ function run(device: GPUDevice, context: GPUCanvasContext, format: GPUTextureFor
         realInWindow = 0;
         paused = false;
         verifyButton.disabled = false;
+        backendInput.disabled = false;
       });
   });
 

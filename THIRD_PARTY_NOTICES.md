@@ -32,3 +32,10 @@ and `Kits/FidelityFX/framegeneration/fsr3/include/gpu/{opticalflow,frameinterpol
 
 `src/wgsl/neural/` and the TypeScript orchestration layer are original work,
 not derived from AMD source.
+
+`reference/hydra/*.glsl` contains recovered review copies of shaders embedded
+in Huawei's `libFrameGenerationSdkCore.so`. `src/wgsl/hydra/` reconstructs their
+BASIC interpolation path in WGSL. These files were not obtained from a published
+open-source release, and no license grant was recovered with the binary. The
+AMD MIT notice above does not apply to them. See `reference/hydra/README.md` for
+the binary hash, source offsets, adaptations, and reconstruction limits.

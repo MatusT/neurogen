@@ -1,0 +1,43 @@
+direction: down
+inputs: User inputs {
+  previous: Previous real color
+  current: Current real color
+  depth: Current depth / optional previous depth
+  camera: Camera transforms / stationary identity
+  style.fill: "#e2f3e4"
+}
+prepare: Preparation {
+  luma: Luminance and filtered mipmaps
+  depth: D24 quantization and average depth pyramid
+}
+motion: Image motion {
+  search: Coarse-to-fine block search
+  match: Match error and atomic usage flags
+  masks: Usage masks and error mipmaps
+  search -> match -> masks
+}
+camera: Camera reprojection {
+  warp: Two depth-aware meshes
+  match: Reprojected luminance error
+  blur: Horizontal / vertical blur
+  warp -> match -> blur
+}
+resolve: Weighted midpoint resolve
+output: Algorithm output\nInterpolated color at t = 0.5 {
+  style.fill: "#dceafa"
+}
+inputs.previous -> prepare.luma
+inputs.current -> prepare.luma
+inputs.depth -> prepare.depth
+prepare.luma -> motion.search
+prepare.luma -> motion.match
+prepare.luma -> camera.match
+prepare.depth -> camera.warp
+inputs.camera -> camera.warp
+motion.search -> resolve: half motion
+motion.masks -> resolve: error and usage
+camera.warp -> resolve: offsets
+camera.blur -> resolve: confidence
+inputs.previous -> resolve
+inputs.current -> resolve
+resolve -> output
