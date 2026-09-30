@@ -26,6 +26,21 @@ const RENDER_SIZE: readonly [number, number] = [1280, 720];
 const REAL_FRAME_PERIOD = 2;
 const FPS_WINDOW_MS = 500;
 
+// Synchronous CPU work, including GPU command encoding/submission. WebGPU
+// executes asynchronously, so these spans do not measure GPU execution time.
+// Callbacks have explicit names so sampled stacks also identify each phase.
+function profile<T>(name: string, work: () => T): T {
+  const start = performance.now();
+  try {
+    return work();
+  } finally {
+    performance.measure(name, { start, end: performance.now() });
+    // The profiler records the measure when emitted. Release the page's copy
+    // so an indefinitely running render loop does not accumulate entries.
+    performance.clearMeasures(name);
+  }
+}
+
 function element<T extends HTMLElement>(id: string): T {
   const found = document.getElementById(id);
   if (!found) {
@@ -161,7 +176,9 @@ function run(device: GPUDevice, context: GPUCanvasContext, format: GPUTextureFor
     const newRealFrame = refresh % REAL_FRAME_PERIOD === 0;
     if (newRealFrame) {
       realFrame++;
-      gbuffer.renderFrame(demoScene(projection, realFrame));
+      profile("Neurogen: Full render", function neurogenFullRender() {
+        gbuffer.renderFrame(demoScene(projection, realFrame));
+      });
       realInWindow++;
 
       // Kept running whether or not the toggle is on: the module's scene-change
@@ -169,13 +186,23 @@ function run(device: GPUDevice, context: GPUCanvasContext, format: GPUTextureFor
       // gap would read as a cut and spend its next sixteen frames recovering
       // just as the viewer switched frame generation back on.
       if (realFrame > 0) {
-        generator.prepare(gbuffer.frameInputs());
-        interpolated = generator.dispatch();
+        interpolated = profile("Neurogen: Interpolation", function neurogenInterpolation() {
+          generator.prepare(gbuffer.frameInputs());
+          return generator.dispatch();
+        });
       }
     }
 
     const what = shown({ mode, rendered: newRealFrame, realFrame, enabledFrom: enabled });
-    presenter.present(context.getCurrentTexture().createView(), source(what).createView());
+    if (what === Shown.Interpolated) {
+      profile("Neurogen: Present interpolated frame", function neurogenPresentInterpolatedFrame() {
+        presenter.present(context.getCurrentTexture().createView(), source(what).createView());
+      });
+    } else {
+      profile("Neurogen: Present real frame", function neurogenPresentRealFrame() {
+        presenter.present(context.getCurrentTexture().createView(), source(what).createView());
+      });
+    }
     hud.presenting.textContent = label(what);
 
     refresh++;

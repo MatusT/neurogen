@@ -28,3 +28,38 @@ npm run demo
 ```
 
 Requires `naga` on PATH: `cargo install naga-cli`.
+
+## Profiling the demo
+
+Run `npm run demo`, open the demo in Firefox, and record a performance profile.
+Select the demo's main thread and open **Stack Chart**. The work runs inside
+explicitly named functions, so sampled stacks identify each phase (search for
+`neurogen`):
+
+- `neurogenFullRender` — scene update and full real-frame rendering.
+- `neurogenInterpolation` — `prepare()` and `dispatch()` for the generated frame.
+- `neurogenPresentRealFrame` — presenting a real frame, including repeats.
+- `neurogenPresentInterpolatedFrame` — presenting a generated frame.
+
+Stack Chart uses sampled function calls, so a short call can fall between
+samples. Reduce the recording interval (for example, to 0.1 ms) for finer
+sampling, at the cost of additional profiling overhead. See Firefox's
+[profiling guidance](https://firefox-source-docs.mozilla.org/devtools/performance/performance.html#tweak-profiler-default-settings).
+
+The **Marker Chart** also records every phase under **UserTiming**, with these
+labels (search for `Neurogen:`):
+
+- `Neurogen: Full render` — scene update and full real-frame rendering.
+- `Neurogen: Interpolation` — `prepare()` and `dispatch()` for the generated frame.
+- `Neurogen: Present real frame` — presenting a real frame, including repeats.
+- `Neurogen: Present interpolated frame` — presenting a generated frame.
+
+Full rendering and interpolation happen on the same refresh; the generated
+frame is presented on the following refresh. Interpolation still runs with
+frame generation toggled off to keep its history current.
+
+These spans measure synchronous JavaScript work and GPU command submission.
+GPU execution continues asynchronously, so the spans are not GPU timings.
+Entries are cleared from the page's performance buffer after emission to avoid
+accumulating them during long sessions; the profiler retains its recording.
+See Firefox's [User Timing marker documentation](https://firefox-source-docs.mozilla.org/tools/profiler/instrumenting-javascript.html#markers-in-content-code).
