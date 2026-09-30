@@ -1,0 +1,2206 @@
+{
+  "metadata": {
+    "size": [
+      1280,
+      720
+    ],
+    "realFrames": 24,
+    "scoredFrames": [
+      18,
+      23
+    ],
+    "benchmark": {
+      "method": "wall-clock prepare + dispatch + queue completion",
+      "runs": 10,
+      "warmupFramesPerRun": 17,
+      "measuredFramesPerRun": 6,
+      "order": "rotate variants by frame and run",
+      "percentile": "nearest-rank",
+      "speedup": "fsr3 median / variant median"
+    },
+    "adapter": {
+      "vendor": "amd",
+      "architecture": "rdna-3",
+      "device": "amd-radeon-890m-graphics-radv-strix1-",
+      "description": "radv: Mesa 26.0.8-1ubuntu0.3"
+    },
+    "sourceSha256": "3c9d070ff4ba58ffab0abcbc60ab118b2e4cd0151c595df1ad0dafffa94f8171",
+    "commit": "e6c9b1d7b08a8b42d675bb15536476607a80ec6d",
+    "workingTree": "M README.md\n M package-lock.json\n M scripts/compare-quality.ts\n M test/quality.test.ts\n?? artifacts/\n?? scripts/quality/benchmark.ts",
+    "node": "v24.14.0",
+    "platform": "linux",
+    "webgpu": "0.6.0",
+    "validationErrors": [],
+    "command": "npm run quality -- --size 1280x720 --benchmark-runs 10"
+  },
+  "results": [
+    {
+      "scene": "static",
+      "variant": "fsr3",
+      "frame": 18,
+      "metrics": {
+        "mae": 0.000023291122030328823,
+        "rmse": 0.00006876244601328126,
+        "psnr": 83.25297366029987,
+        "changedRegionMae": null,
+        "changedPixels": 0
+      }
+    },
+    {
+      "scene": "static",
+      "variant": "fsr3-optical-only",
+      "frame": 18,
+      "metrics": {
+        "mae": 0.000023291122030328823,
+        "rmse": 0.00006876244601328126,
+        "psnr": 83.25297366029987,
+        "changedRegionMae": null,
+        "changedPixels": 0
+      }
+    },
+    {
+      "scene": "static",
+      "variant": "hydra",
+      "frame": 18,
+      "metrics": {
+        "mae": 0,
+        "rmse": 0,
+        "psnr": null,
+        "changedRegionMae": null,
+        "changedPixels": 0
+      }
+    },
+    {
+      "scene": "static",
+      "variant": "crossfade",
+      "frame": 18,
+      "metrics": {
+        "mae": 0,
+        "rmse": 0,
+        "psnr": null,
+        "changedRegionMae": null,
+        "changedPixels": 0
+      }
+    },
+    {
+      "scene": "static",
+      "variant": "fsr3",
+      "frame": 19,
+      "metrics": {
+        "mae": 0.000023291122030328823,
+        "rmse": 0.00006876244601328126,
+        "psnr": 83.25297366029987,
+        "changedRegionMae": null,
+        "changedPixels": 0
+      }
+    },
+    {
+      "scene": "static",
+      "variant": "fsr3-optical-only",
+      "frame": 19,
+      "metrics": {
+        "mae": 0.000023291122030328823,
+        "rmse": 0.00006876244601328126,
+        "psnr": 83.25297366029987,
+        "changedRegionMae": null,
+        "changedPixels": 0
+      }
+    },
+    {
+      "scene": "static",
+      "variant": "hydra",
+      "frame": 19,
+      "metrics": {
+        "mae": 0,
+        "rmse": 0,
+        "psnr": null,
+        "changedRegionMae": null,
+        "changedPixels": 0
+      }
+    },
+    {
+      "scene": "static",
+      "variant": "crossfade",
+      "frame": 19,
+      "metrics": {
+        "mae": 0,
+        "rmse": 0,
+        "psnr": null,
+        "changedRegionMae": null,
+        "changedPixels": 0
+      }
+    },
+    {
+      "scene": "static",
+      "variant": "fsr3",
+      "frame": 20,
+      "metrics": {
+        "mae": 0.000023291122030328823,
+        "rmse": 0.00006876244601328126,
+        "psnr": 83.25297366029987,
+        "changedRegionMae": null,
+        "changedPixels": 0
+      }
+    },
+    {
+      "scene": "static",
+      "variant": "fsr3-optical-only",
+      "frame": 20,
+      "metrics": {
+        "mae": 0.000023291122030328823,
+        "rmse": 0.00006876244601328126,
+        "psnr": 83.25297366029987,
+        "changedRegionMae": null,
+        "changedPixels": 0
+      }
+    },
+    {
+      "scene": "static",
+      "variant": "hydra",
+      "frame": 20,
+      "metrics": {
+        "mae": 0,
+        "rmse": 0,
+        "psnr": null,
+        "changedRegionMae": null,
+        "changedPixels": 0
+      }
+    },
+    {
+      "scene": "static",
+      "variant": "crossfade",
+      "frame": 20,
+      "metrics": {
+        "mae": 0,
+        "rmse": 0,
+        "psnr": null,
+        "changedRegionMae": null,
+        "changedPixels": 0
+      }
+    },
+    {
+      "scene": "static",
+      "variant": "fsr3",
+      "frame": 21,
+      "metrics": {
+        "mae": 0.000023291122030328823,
+        "rmse": 0.00006876244601328126,
+        "psnr": 83.25297366029987,
+        "changedRegionMae": null,
+        "changedPixels": 0
+      }
+    },
+    {
+      "scene": "static",
+      "variant": "fsr3-optical-only",
+      "frame": 21,
+      "metrics": {
+        "mae": 0.000023291122030328823,
+        "rmse": 0.00006876244601328126,
+        "psnr": 83.25297366029987,
+        "changedRegionMae": null,
+        "changedPixels": 0
+      }
+    },
+    {
+      "scene": "static",
+      "variant": "hydra",
+      "frame": 21,
+      "metrics": {
+        "mae": 0,
+        "rmse": 0,
+        "psnr": null,
+        "changedRegionMae": null,
+        "changedPixels": 0
+      }
+    },
+    {
+      "scene": "static",
+      "variant": "crossfade",
+      "frame": 21,
+      "metrics": {
+        "mae": 0,
+        "rmse": 0,
+        "psnr": null,
+        "changedRegionMae": null,
+        "changedPixels": 0
+      }
+    },
+    {
+      "scene": "static",
+      "variant": "fsr3",
+      "frame": 22,
+      "metrics": {
+        "mae": 0.000023291122030328823,
+        "rmse": 0.00006876244601328126,
+        "psnr": 83.25297366029987,
+        "changedRegionMae": null,
+        "changedPixels": 0
+      }
+    },
+    {
+      "scene": "static",
+      "variant": "fsr3-optical-only",
+      "frame": 22,
+      "metrics": {
+        "mae": 0.000023291122030328823,
+        "rmse": 0.00006876244601328126,
+        "psnr": 83.25297366029987,
+        "changedRegionMae": null,
+        "changedPixels": 0
+      }
+    },
+    {
+      "scene": "static",
+      "variant": "hydra",
+      "frame": 22,
+      "metrics": {
+        "mae": 0,
+        "rmse": 0,
+        "psnr": null,
+        "changedRegionMae": null,
+        "changedPixels": 0
+      }
+    },
+    {
+      "scene": "static",
+      "variant": "crossfade",
+      "frame": 22,
+      "metrics": {
+        "mae": 0,
+        "rmse": 0,
+        "psnr": null,
+        "changedRegionMae": null,
+        "changedPixels": 0
+      }
+    },
+    {
+      "scene": "static",
+      "variant": "fsr3",
+      "frame": 23,
+      "metrics": {
+        "mae": 0.000023291122030328823,
+        "rmse": 0.00006876244601328126,
+        "psnr": 83.25297366029987,
+        "changedRegionMae": null,
+        "changedPixels": 0
+      }
+    },
+    {
+      "scene": "static",
+      "variant": "fsr3-optical-only",
+      "frame": 23,
+      "metrics": {
+        "mae": 0.000023291122030328823,
+        "rmse": 0.00006876244601328126,
+        "psnr": 83.25297366029987,
+        "changedRegionMae": null,
+        "changedPixels": 0
+      }
+    },
+    {
+      "scene": "static",
+      "variant": "hydra",
+      "frame": 23,
+      "metrics": {
+        "mae": 0,
+        "rmse": 0,
+        "psnr": null,
+        "changedRegionMae": null,
+        "changedPixels": 0
+      }
+    },
+    {
+      "scene": "static",
+      "variant": "crossfade",
+      "frame": 23,
+      "metrics": {
+        "mae": 0,
+        "rmse": 0,
+        "psnr": null,
+        "changedRegionMae": null,
+        "changedPixels": 0
+      }
+    },
+    {
+      "scene": "thin-bar",
+      "variant": "fsr3",
+      "frame": 18,
+      "metrics": {
+        "mae": 0.00013804861413383926,
+        "rmse": 0.002178874738044614,
+        "psnr": 53.235354726325106,
+        "changedRegionMae": 0.005385832303923397,
+        "changedPixels": 19404
+      },
+      "markerFailures": []
+    },
+    {
+      "scene": "thin-bar",
+      "variant": "fsr3-optical-only",
+      "frame": 18,
+      "metrics": {
+        "mae": 0.0038686021169026695,
+        "rmse": 0.029276083945205592,
+        "psnr": 30.66974032462926,
+        "changedRegionMae": 0.18263397814440643,
+        "changedPixels": 19404
+      },
+      "markerFailures": [
+        "bar at 729.81px, not the 713.77px midpoint of 697.77 and 729.77",
+        "2 bars, not one — a crossfade, not a warp",
+        "bar carries 0.438 of the real frames' red",
+        "bar found at 730px, not the 714px midpoint of where it was found in the real frames",
+        "bar's pixels differ from the real frames' by 56.2% of their red"
+      ]
+    },
+    {
+      "scene": "thin-bar",
+      "variant": "hydra",
+      "frame": 18,
+      "metrics": {
+        "mae": 0.0023438721784838925,
+        "rmse": 0.023011490876458655,
+        "psnr": 32.76110486396378,
+        "changedRegionMae": 0.11104380017104103,
+        "changedPixels": 19404
+      },
+      "markerFailures": [
+        "bar at 721.70px, not the 713.77px midpoint of 697.77 and 729.77",
+        "3 bars, not one — a crossfade, not a warp",
+        "2 pieces stacked down the frame, not one bar",
+        "bar 2px wide, against 16px in the real frames",
+        "bar centred on row 547.27, against 360.00 in the real frames",
+        "bar 19px tall, against 396px in the real frames",
+        "bar carries 0.002 of the real frames' red",
+        "bar found at 721px, not the 714px midpoint of where it was found in the real frames",
+        "bar found on row 548.5, not row 360 as in the real frames",
+        "bar's pixels differ from the real frames' by Infinity% of their red"
+      ]
+    },
+    {
+      "scene": "thin-bar",
+      "variant": "crossfade",
+      "frame": 18,
+      "metrics": {
+        "mae": 0.003954244829990246,
+        "rmse": 0.029651843873573957,
+        "psnr": 30.558965904867925,
+        "changedRegionMae": 0.18780828877133635,
+        "changedPixels": 19404
+      },
+      "markerFailures": [
+        "bar at 697.81px, not the 713.77px midpoint of 697.77 and 729.77",
+        "2 bars, not one — a crossfade, not a warp",
+        "bar carries 0.438 of the real frames' red",
+        "bar found at 698px, not the 714px midpoint of where it was found in the real frames",
+        "bar's pixels differ from the real frames' by 56.2% of their red"
+      ]
+    },
+    {
+      "scene": "thin-bar",
+      "variant": "fsr3",
+      "frame": 19,
+      "metrics": {
+        "mae": 0.00014940223641503878,
+        "rmse": 0.002322824268687277,
+        "psnr": 52.679672902800895,
+        "changedRegionMae": 0.005901896511452522,
+        "changedPixels": 19404
+      },
+      "markerFailures": []
+    },
+    {
+      "scene": "thin-bar",
+      "variant": "fsr3-optical-only",
+      "frame": 19,
+      "metrics": {
+        "mae": 0.003862407649004901,
+        "rmse": 0.029258251596346485,
+        "psnr": 30.675032596849874,
+        "changedRegionMae": 0.1823387106677425,
+        "changedPixels": 19404
+      },
+      "markerFailures": [
+        "bar at 761.81px, not the 745.77px midpoint of 729.77 and 761.77",
+        "2 bars, not one — a crossfade, not a warp",
+        "bar carries 0.438 of the real frames' red",
+        "bar found at 762px, not the 746px midpoint of where it was found in the real frames",
+        "bar's pixels differ from the real frames' by 56.2% of their red"
+      ]
+    },
+    {
+      "scene": "thin-bar",
+      "variant": "hydra",
+      "frame": 19,
+      "metrics": {
+        "mae": 0.0023371606292548,
+        "rmse": 0.022951748134088495,
+        "psnr": 32.78368461118375,
+        "changedRegionMae": 0.1107239234015793,
+        "changedPixels": 19404
+      },
+      "markerFailures": [
+        "bar at 753.05px, not the 745.77px midpoint of 729.77 and 761.77",
+        "3 bars, not one — a crossfade, not a warp",
+        "2 pieces stacked down the frame, not one bar",
+        "bar 2px wide, against 16px in the real frames",
+        "bar centred on row 543.80, against 360.00 in the real frames",
+        "bar 22px tall, against 396px in the real frames",
+        "bar carries 0.003 of the real frames' red",
+        "bar found at 753px, not the 746px midpoint of where it was found in the real frames",
+        "bar found on row 547, not row 360 as in the real frames",
+        "bar's pixels differ from the real frames' by Infinity% of their red"
+      ]
+    },
+    {
+      "scene": "thin-bar",
+      "variant": "crossfade",
+      "frame": 19,
+      "metrics": {
+        "mae": 0.003951486901000694,
+        "rmse": 0.02964325402753481,
+        "psnr": 30.561482485761356,
+        "changedRegionMae": 0.18767729993621107,
+        "changedPixels": 19404
+      },
+      "markerFailures": [
+        "bar at 729.81px, not the 745.77px midpoint of 729.77 and 761.77",
+        "2 bars, not one — a crossfade, not a warp",
+        "bar carries 0.438 of the real frames' red",
+        "bar found at 730px, not the 746px midpoint of where it was found in the real frames",
+        "bar's pixels differ from the real frames' by 56.2% of their red"
+      ]
+    },
+    {
+      "scene": "thin-bar",
+      "variant": "fsr3",
+      "frame": 20,
+      "metrics": {
+        "mae": 0.0001423666663079833,
+        "rmse": 0.002255894575098154,
+        "psnr": 52.933624002665375,
+        "changedRegionMae": 0.005587853946440377,
+        "changedPixels": 19404
+      },
+      "markerFailures": []
+    },
+    {
+      "scene": "thin-bar",
+      "variant": "fsr3-optical-only",
+      "frame": 20,
+      "metrics": {
+        "mae": 0.003846438659562005,
+        "rmse": 0.029201127781363787,
+        "psnr": 30.69200750543927,
+        "changedRegionMae": 0.18157923649997798,
+        "changedPixels": 19404
+      },
+      "markerFailures": [
+        "bar at 793.81px, not the 777.77px midpoint of 761.77 and 793.77",
+        "2 bars, not one — a crossfade, not a warp",
+        "bar carries 0.438 of the real frames' red",
+        "bar found at 794px, not the 778px midpoint of where it was found in the real frames",
+        "bar's pixels differ from the real frames' by 56.2% of their red"
+      ]
+    },
+    {
+      "scene": "thin-bar",
+      "variant": "hydra",
+      "frame": 20,
+      "metrics": {
+        "mae": 0.002439121107260386,
+        "rmse": 0.02327211838764237,
+        "psnr": 32.663281649100114,
+        "changedRegionMae": 0.11556609088281974,
+        "changedPixels": 19404
+      },
+      "markerFailures": [
+        "bar at 784.95px, not the 777.77px midpoint of 761.77 and 793.77",
+        "3 bars, not one — a crossfade, not a warp",
+        "2 pieces stacked down the frame, not one bar",
+        "bar 2px wide, against 16px in the real frames",
+        "bar centred on row 539.20, against 360.00 in the real frames",
+        "bar 26px tall, against 396px in the real frames",
+        "bar carries 0.004 of the real frames' red",
+        "bar found at 785px, not the 778px midpoint of where it was found in the real frames",
+        "bar found on row 545, not row 360 as in the real frames",
+        "bar's pixels differ from the real frames' by Infinity% of their red"
+      ]
+    },
+    {
+      "scene": "thin-bar",
+      "variant": "crossfade",
+      "frame": 20,
+      "metrics": {
+        "mae": 0.003949945546962597,
+        "rmse": 0.02962542908613177,
+        "psnr": 30.5667070148167,
+        "changedRegionMae": 0.18760409276853893,
+        "changedPixels": 19404
+      },
+      "markerFailures": [
+        "bar at 761.81px, not the 777.77px midpoint of 761.77 and 793.77",
+        "2 bars, not one — a crossfade, not a warp",
+        "bar carries 0.438 of the real frames' red",
+        "bar found at 762px, not the 778px midpoint of where it was found in the real frames",
+        "bar's pixels differ from the real frames' by 56.2% of their red"
+      ]
+    },
+    {
+      "scene": "thin-bar",
+      "variant": "fsr3",
+      "frame": 21,
+      "metrics": {
+        "mae": 0.00014450278596659364,
+        "rmse": 0.002281267940847229,
+        "psnr": 52.83647405424379,
+        "changedRegionMae": 0.005681133536279042,
+        "changedPixels": 19404
+      },
+      "markerFailures": []
+    },
+    {
+      "scene": "thin-bar",
+      "variant": "fsr3-optical-only",
+      "frame": 21,
+      "metrics": {
+        "mae": 0.0038370108604431153,
+        "rmse": 0.02915923027335602,
+        "psnr": 30.704478888594412,
+        "changedRegionMae": 0.18113243487301803,
+        "changedPixels": 19404
+      },
+      "markerFailures": [
+        "bar at 825.81px, not the 809.77px midpoint of 793.77 and 825.77",
+        "2 bars, not one — a crossfade, not a warp",
+        "bar carries 0.438 of the real frames' red",
+        "bar found at 826px, not the 810px midpoint of where it was found in the real frames",
+        "bar's pixels differ from the real frames' by 56.2% of their red"
+      ]
+    },
+    {
+      "scene": "thin-bar",
+      "variant": "hydra",
+      "frame": 21,
+      "metrics": {
+        "mae": 0.0025076757868131004,
+        "rmse": 0.023564463093013552,
+        "psnr": 32.55484902039788,
+        "changedRegionMae": 0.1188096430656681,
+        "changedPixels": 19404
+      },
+      "markerFailures": [
+        "bar at 817.30px, not the 809.77px midpoint of 793.77 and 825.77",
+        "3 bars, not one — a crossfade, not a warp",
+        "2 pieces stacked down the frame, not one bar",
+        "bar 2px wide, against 16px in the real frames",
+        "bar centred on row 529.17, against 360.00 in the real frames",
+        "bar 45px tall, against 396px in the real frames",
+        "bar carries 0.006 of the real frames' red",
+        "bar found at 817px, not the 810px midpoint of where it was found in the real frames",
+        "bar found on row 535.5, not row 360 as in the real frames",
+        "bar's pixels differ from the real frames' by Infinity% of their red"
+      ]
+    },
+    {
+      "scene": "thin-bar",
+      "variant": "crossfade",
+      "frame": 21,
+      "metrics": {
+        "mae": 0.0039493578893167,
+        "rmse": 0.029624426706428175,
+        "psnr": 30.567000907835183,
+        "changedRegionMae": 0.18757618175604365,
+        "changedPixels": 19404
+      },
+      "markerFailures": [
+        "bar at 793.81px, not the 809.77px midpoint of 793.77 and 825.77",
+        "2 bars, not one — a crossfade, not a warp",
+        "bar carries 0.438 of the real frames' red",
+        "bar found at 794px, not the 810px midpoint of where it was found in the real frames",
+        "bar's pixels differ from the real frames' by 56.2% of their red"
+      ]
+    },
+    {
+      "scene": "thin-bar",
+      "variant": "fsr3",
+      "frame": 22,
+      "metrics": {
+        "mae": 0.0001393095905142319,
+        "rmse": 0.0021528635979332403,
+        "psnr": 53.339669710464854,
+        "changedRegionMae": 0.005420126904042522,
+        "changedPixels": 19404
+      },
+      "markerFailures": []
+    },
+    {
+      "scene": "thin-bar",
+      "variant": "fsr3-optical-only",
+      "frame": 22,
+      "metrics": {
+        "mae": 0.0038286628988054064,
+        "rmse": 0.029139107771542994,
+        "psnr": 30.710475005903835,
+        "changedRegionMae": 0.18073473964238473,
+        "changedPixels": 19404
+      },
+      "markerFailures": [
+        "bar at 857.81px, not the 841.77px midpoint of 825.77 and 857.77",
+        "2 bars, not one — a crossfade, not a warp",
+        "bar carries 0.438 of the real frames' red",
+        "bar found at 858px, not the 842px midpoint of where it was found in the real frames",
+        "bar's pixels differ from the real frames' by 56.2% of their red"
+      ]
+    },
+    {
+      "scene": "thin-bar",
+      "variant": "hydra",
+      "frame": 22,
+      "metrics": {
+        "mae": 0.0024222209718492297,
+        "rmse": 0.023208750469363743,
+        "psnr": 32.68696481592966,
+        "changedRegionMae": 0.11477959744997272,
+        "changedPixels": 19404
+      },
+      "markerFailures": [
+        "bar at 849.30px, not the 841.77px midpoint of 825.77 and 857.77",
+        "3 bars, not one — a crossfade, not a warp",
+        "3 pieces stacked down the frame, not one bar",
+        "bar 2px wide, against 16px in the real frames",
+        "bar centred on row 545.90, against 360.00 in the real frames",
+        "bar 21px tall, against 396px in the real frames",
+        "bar carries 0.003 of the real frames' red",
+        "bar found at 849px, not the 842px midpoint of where it was found in the real frames",
+        "bar found on row 547.5, not row 360 as in the real frames",
+        "bar's pixels differ from the real frames' by Infinity% of their red"
+      ]
+    },
+    {
+      "scene": "thin-bar",
+      "variant": "crossfade",
+      "frame": 22,
+      "metrics": {
+        "mae": 0.003949107306974906,
+        "rmse": 0.029624760427219978,
+        "psnr": 30.566903061363092,
+        "changedRegionMae": 0.18756428025706415,
+        "changedPixels": 19404
+      },
+      "markerFailures": [
+        "bar at 825.81px, not the 841.77px midpoint of 825.77 and 857.77",
+        "2 bars, not one — a crossfade, not a warp",
+        "bar carries 0.438 of the real frames' red",
+        "bar found at 826px, not the 842px midpoint of where it was found in the real frames",
+        "bar's pixels differ from the real frames' by 56.2% of their red"
+      ]
+    },
+    {
+      "scene": "thin-bar",
+      "variant": "fsr3",
+      "frame": 23,
+      "metrics": {
+        "mae": 0.00014729193810597753,
+        "rmse": 0.002308906616588686,
+        "psnr": 52.731872634167196,
+        "changedRegionMae": 0.005791194733373817,
+        "changedPixels": 19404
+      },
+      "markerFailures": []
+    },
+    {
+      "scene": "thin-bar",
+      "variant": "fsr3-optical-only",
+      "frame": 23,
+      "metrics": {
+        "mae": 0.003836730343324167,
+        "rmse": 0.029167584231864035,
+        "psnr": 30.701990785557985,
+        "changedRegionMae": 0.18112039916631503,
+        "changedPixels": 19404
+      },
+      "markerFailures": [
+        "bar at 889.81px, not the 873.77px midpoint of 857.77 and 889.77",
+        "2 bars, not one — a crossfade, not a warp",
+        "bar carries 0.438 of the real frames' red",
+        "bar found at 890px, not the 874px midpoint of where it was found in the real frames",
+        "bar's pixels differ from the real frames' by 56.2% of their red"
+      ]
+    },
+    {
+      "scene": "thin-bar",
+      "variant": "hydra",
+      "frame": 23,
+      "metrics": {
+        "mae": 0.002381906443172031,
+        "rmse": 0.02309931825588713,
+        "psnr": 32.72801675027435,
+        "changedRegionMae": 0.1128541014165491,
+        "changedPixels": 19404
+      },
+      "markerFailures": [
+        "bar at 881.28px, not the 873.77px midpoint of 857.77 and 889.77",
+        "3 bars, not one — a crossfade, not a warp",
+        "2 pieces stacked down the frame, not one bar",
+        "bar 2px wide, against 16px in the real frames",
+        "bar centred on row 541.27, against 360.00 in the real frames",
+        "bar 24px tall, against 396px in the real frames",
+        "bar carries 0.003 of the real frames' red",
+        "bar found at 881px, not the 874px midpoint of where it was found in the real frames",
+        "bar found on row 546, not row 360 as in the real frames",
+        "bar's pixels differ from the real frames' by Infinity% of their red"
+      ]
+    },
+    {
+      "scene": "thin-bar",
+      "variant": "crossfade",
+      "frame": 23,
+      "metrics": {
+        "mae": 0.003951082671130145,
+        "rmse": 0.029633164129786026,
+        "psnr": 30.564439470743782,
+        "changedRegionMae": 0.18765810089226662,
+        "changedPixels": 19404
+      },
+      "markerFailures": [
+        "bar at 857.81px, not the 873.77px midpoint of 857.77 and 889.77",
+        "2 bars, not one — a crossfade, not a warp",
+        "bar carries 0.438 of the real frames' red",
+        "bar found at 858px, not the 874px midpoint of where it was found in the real frames",
+        "bar's pixels differ from the real frames' by 56.2% of their red"
+      ]
+    },
+    {
+      "scene": "textured-objects",
+      "variant": "fsr3",
+      "frame": 18,
+      "metrics": {
+        "mae": 0.0005767523248990377,
+        "rmse": 0.008784997961675195,
+        "psnr": 41.12516669870285,
+        "changedRegionMae": 0.007997876937460983,
+        "changedPixels": 61139
+      }
+    },
+    {
+      "scene": "textured-objects",
+      "variant": "fsr3-optical-only",
+      "frame": 18,
+      "metrics": {
+        "mae": 0.002088343766000536,
+        "rmse": 0.013751439713078286,
+        "psnr": 37.233036616000376,
+        "changedRegionMae": 0.03112378756813581,
+        "changedPixels": 61139
+      }
+    },
+    {
+      "scene": "textured-objects",
+      "variant": "hydra",
+      "frame": 18,
+      "metrics": {
+        "mae": 0.0012417770866994505,
+        "rmse": 0.01097293986892924,
+        "psnr": 39.19354001404393,
+        "changedRegionMae": 0.018407473300040004,
+        "changedPixels": 61139
+      }
+    },
+    {
+      "scene": "textured-objects",
+      "variant": "crossfade",
+      "frame": 18,
+      "metrics": {
+        "mae": 0.0028786979174172437,
+        "rmse": 0.019243571795959362,
+        "psnr": 34.31428630988647,
+        "changedRegionMae": 0.04336884853196009,
+        "changedPixels": 61139
+      }
+    },
+    {
+      "scene": "textured-objects",
+      "variant": "fsr3",
+      "frame": 19,
+      "metrics": {
+        "mae": 0.00048645904770603884,
+        "rmse": 0.0058827726807692505,
+        "psnr": 44.60835866167461,
+        "changedRegionMae": 0.006807347857276032,
+        "changedPixels": 59697
+      }
+    },
+    {
+      "scene": "textured-objects",
+      "variant": "fsr3-optical-only",
+      "frame": 19,
+      "metrics": {
+        "mae": 0.0019213058992668434,
+        "rmse": 0.011690705004744456,
+        "psnr": 38.643185960787136,
+        "changedRegionMae": 0.029293741465963447,
+        "changedPixels": 59697
+      }
+    },
+    {
+      "scene": "textured-objects",
+      "variant": "hydra",
+      "frame": 19,
+      "metrics": {
+        "mae": 0.0010705350284223203,
+        "rmse": 0.00849372871355281,
+        "psnr": 41.41803228647011,
+        "changedRegionMae": 0.016146294545102507,
+        "changedPixels": 59697
+      }
+    },
+    {
+      "scene": "textured-objects",
+      "variant": "crossfade",
+      "frame": 19,
+      "metrics": {
+        "mae": 0.002831029720880367,
+        "rmse": 0.0189565117064833,
+        "psnr": 34.44483153194629,
+        "changedRegionMae": 0.043678288079274076,
+        "changedPixels": 59697
+      }
+    },
+    {
+      "scene": "textured-objects",
+      "variant": "fsr3",
+      "frame": 20,
+      "metrics": {
+        "mae": 0.00046285055301807545,
+        "rmse": 0.0062511329406949815,
+        "psnr": 44.080825300151176,
+        "changedRegionMae": 0.006782183464327646,
+        "changedPixels": 56657
+      }
+    },
+    {
+      "scene": "textured-objects",
+      "variant": "fsr3-optical-only",
+      "frame": 20,
+      "metrics": {
+        "mae": 0.0018982181836057592,
+        "rmse": 0.012522711741947634,
+        "psnr": 38.04603232499976,
+        "changedRegionMae": 0.030481827146076113,
+        "changedPixels": 56657
+      }
+    },
+    {
+      "scene": "textured-objects",
+      "variant": "hydra",
+      "frame": 20,
+      "metrics": {
+        "mae": 0.0011565225102283336,
+        "rmse": 0.011007091555987855,
+        "psnr": 39.16654842174619,
+        "changedRegionMae": 0.018460090387144627,
+        "changedPixels": 56657
+      }
+    },
+    {
+      "scene": "textured-objects",
+      "variant": "crossfade",
+      "frame": 20,
+      "metrics": {
+        "mae": 0.0026808973484569124,
+        "rmse": 0.018463104634681652,
+        "psnr": 34.673905381108526,
+        "changedRegionMae": 0.04357288945757889,
+        "changedPixels": 56657
+      }
+    },
+    {
+      "scene": "textured-objects",
+      "variant": "fsr3",
+      "frame": 21,
+      "metrics": {
+        "mae": 0.00040845941614221646,
+        "rmse": 0.005102853077843606,
+        "psnr": 45.84373871526938,
+        "changedRegionMae": 0.006148284023749448,
+        "changedPixels": 54346
+      }
+    },
+    {
+      "scene": "textured-objects",
+      "variant": "fsr3-optical-only",
+      "frame": 21,
+      "metrics": {
+        "mae": 0.0017018216627615469,
+        "rmse": 0.010755692568383206,
+        "psnr": 39.36723239554755,
+        "changedRegionMae": 0.02844566671190152,
+        "changedPixels": 54346
+      }
+    },
+    {
+      "scene": "textured-objects",
+      "variant": "hydra",
+      "frame": 21,
+      "metrics": {
+        "mae": 0.0009393713319743121,
+        "rmse": 0.007670109179847234,
+        "psnr": 42.30396908120887,
+        "changedRegionMae": 0.015555545639966315,
+        "changedPixels": 54346
+      }
+    },
+    {
+      "scene": "textured-objects",
+      "variant": "crossfade",
+      "frame": 21,
+      "metrics": {
+        "mae": 0.002400784784996951,
+        "rmse": 0.016394633518757726,
+        "psnr": 35.705965739770505,
+        "changedRegionMae": 0.040675303502534926,
+        "changedPixels": 54346
+      }
+    },
+    {
+      "scene": "textured-objects",
+      "variant": "fsr3",
+      "frame": 22,
+      "metrics": {
+        "mae": 0.00038538277149200437,
+        "rmse": 0.0048910807260197225,
+        "psnr": 46.21190338403401,
+        "changedRegionMae": 0.005824725441106446,
+        "changedPixels": 53859
+      }
+    },
+    {
+      "scene": "textured-objects",
+      "variant": "fsr3-optical-only",
+      "frame": 22,
+      "metrics": {
+        "mae": 0.0016506837142838372,
+        "rmse": 0.010576867422178126,
+        "psnr": 39.51285878724148,
+        "changedRegionMae": 0.027829653902011985,
+        "changedPixels": 53859
+      }
+    },
+    {
+      "scene": "textured-objects",
+      "variant": "hydra",
+      "frame": 22,
+      "metrics": {
+        "mae": 0.0008313910056043554,
+        "rmse": 0.006895027961085584,
+        "psnr": 43.22927936620772,
+        "changedRegionMae": 0.013787670942105002,
+        "changedPixels": 53859
+      }
+    },
+    {
+      "scene": "textured-objects",
+      "variant": "crossfade",
+      "frame": 22,
+      "metrics": {
+        "mae": 0.0023203412029478283,
+        "rmse": 0.016066369642069207,
+        "psnr": 35.88164490721301,
+        "changedRegionMae": 0.03966878993702862,
+        "changedPixels": 53859
+      }
+    },
+    {
+      "scene": "textured-objects",
+      "variant": "fsr3",
+      "frame": 23,
+      "metrics": {
+        "mae": 0.00039041122904530276,
+        "rmse": 0.004868297594421081,
+        "psnr": 46.25245763240326,
+        "changedRegionMae": 0.005864197762133647,
+        "changedPixels": 54086
+      }
+    },
+    {
+      "scene": "textured-objects",
+      "variant": "fsr3-optical-only",
+      "frame": 23,
+      "metrics": {
+        "mae": 0.0016381527317894829,
+        "rmse": 0.010576360899095099,
+        "psnr": 39.5132747619128,
+        "changedRegionMae": 0.027504260972975907,
+        "changedPixels": 54086
+      }
+    },
+    {
+      "scene": "textured-objects",
+      "variant": "hydra",
+      "frame": 23,
+      "metrics": {
+        "mae": 0.0008143100032099971,
+        "rmse": 0.006759422924252558,
+        "psnr": 43.40180759451237,
+        "changedRegionMae": 0.013454726382725062,
+        "changedPixels": 54086
+      }
+    },
+    {
+      "scene": "textured-objects",
+      "variant": "crossfade",
+      "frame": 23,
+      "metrics": {
+        "mae": 0.0022992415063911014,
+        "rmse": 0.016063455583357908,
+        "psnr": 35.88322046464334,
+        "changedRegionMae": 0.03914788068218805,
+        "changedPixels": 54086
+      }
+    },
+    {
+      "scene": "camera-pan",
+      "variant": "fsr3",
+      "frame": 18,
+      "metrics": {
+        "mae": 0.004771227814533092,
+        "rmse": 0.009828133909923827,
+        "psnr": 40.15057869637313,
+        "changedRegionMae": 0.01208009580616641,
+        "changedPixels": 304028
+      }
+    },
+    {
+      "scene": "camera-pan",
+      "variant": "fsr3-optical-only",
+      "frame": 18,
+      "metrics": {
+        "mae": 0.005064450855608339,
+        "rmse": 0.01199180201356387,
+        "psnr": 38.42231100734248,
+        "changedRegionMae": 0.015224462458439529,
+        "changedPixels": 304028
+      }
+    },
+    {
+      "scene": "camera-pan",
+      "variant": "hydra",
+      "frame": 18,
+      "metrics": {
+        "mae": 0.004832954693723608,
+        "rmse": 0.010014848928305528,
+        "psnr": 39.98711195106887,
+        "changedRegionMae": 0.012189821054936073,
+        "changedPixels": 304028
+      }
+    },
+    {
+      "scene": "camera-pan",
+      "variant": "crossfade",
+      "frame": 18,
+      "metrics": {
+        "mae": 0.005169394871702901,
+        "rmse": 0.012968034907840438,
+        "psnr": 37.74251658215741,
+        "changedRegionMae": 0.015598793619837707,
+        "changedPixels": 304028
+      }
+    },
+    {
+      "scene": "camera-pan",
+      "variant": "fsr3",
+      "frame": 19,
+      "metrics": {
+        "mae": 0.0047369699014557735,
+        "rmse": 0.009656540558709549,
+        "psnr": 40.30356862148304,
+        "changedRegionMae": 0.012078304564328199,
+        "changedPixels": 300441
+      }
+    },
+    {
+      "scene": "camera-pan",
+      "variant": "fsr3-optical-only",
+      "frame": 19,
+      "metrics": {
+        "mae": 0.004952253986288,
+        "rmse": 0.011668266145156186,
+        "psnr": 38.65987346955513,
+        "changedRegionMae": 0.01506279384349494,
+        "changedPixels": 300441
+      }
+    },
+    {
+      "scene": "camera-pan",
+      "variant": "hydra",
+      "frame": 19,
+      "metrics": {
+        "mae": 0.004794067078166537,
+        "rmse": 0.009798541515627727,
+        "psnr": 40.176771259319956,
+        "changedRegionMae": 0.012171916750963324,
+        "changedPixels": 300441
+      }
+    },
+    {
+      "scene": "camera-pan",
+      "variant": "crossfade",
+      "frame": 19,
+      "metrics": {
+        "mae": 0.005032239699805224,
+        "rmse": 0.012416815023366178,
+        "psnr": 38.119795772662386,
+        "changedRegionMae": 0.015364476478826342,
+        "changedPixels": 300441
+      }
+    },
+    {
+      "scene": "camera-pan",
+      "variant": "fsr3",
+      "frame": 20,
+      "metrics": {
+        "mae": 0.004769514699776967,
+        "rmse": 0.00962815386405548,
+        "psnr": 40.329139560760424,
+        "changedRegionMae": 0.01204022448163415,
+        "changedPixels": 305642
+      }
+    },
+    {
+      "scene": "camera-pan",
+      "variant": "fsr3-optical-only",
+      "frame": 20,
+      "metrics": {
+        "mae": 0.005042920245064629,
+        "rmse": 0.01165200479562947,
+        "psnr": 38.67198690602474,
+        "changedRegionMae": 0.015081251853754675,
+        "changedPixels": 305642
+      }
+    },
+    {
+      "scene": "camera-pan",
+      "variant": "hydra",
+      "frame": 20,
+      "metrics": {
+        "mae": 0.004834154215123918,
+        "rmse": 0.00985304385613926,
+        "psnr": 40.128591683012125,
+        "changedRegionMae": 0.012156730461462999,
+        "changedPixels": 305642
+      }
+    },
+    {
+      "scene": "camera-pan",
+      "variant": "crossfade",
+      "frame": 20,
+      "metrics": {
+        "mae": 0.005172877813930865,
+        "rmse": 0.01281096634381057,
+        "psnr": 37.848362195183086,
+        "changedRegionMae": 0.015525702197808475,
+        "changedPixels": 305642
+      }
+    },
+    {
+      "scene": "camera-pan",
+      "variant": "fsr3",
+      "frame": 21,
+      "metrics": {
+        "mae": 0.0047614051015288745,
+        "rmse": 0.00997989396627942,
+        "psnr": 40.01748145903089,
+        "changedRegionMae": 0.012123518257572923,
+        "changedPixels": 301453
+      }
+    },
+    {
+      "scene": "camera-pan",
+      "variant": "fsr3-optical-only",
+      "frame": 21,
+      "metrics": {
+        "mae": 0.005003479222456614,
+        "rmse": 0.011985977405839196,
+        "psnr": 38.42653090610723,
+        "changedRegionMae": 0.01517751798543827,
+        "changedPixels": 301453
+      }
+    },
+    {
+      "scene": "camera-pan",
+      "variant": "hydra",
+      "frame": 21,
+      "metrics": {
+        "mae": 0.0048240100785538,
+        "rmse": 0.010097086254086597,
+        "psnr": 39.916078675511166,
+        "changedRegionMae": 0.01224058655139951,
+        "changedPixels": 301453
+      }
+    },
+    {
+      "scene": "camera-pan",
+      "variant": "crossfade",
+      "frame": 21,
+      "metrics": {
+        "mae": 0.005077942907810211,
+        "rmse": 0.01264496843664396,
+        "psnr": 37.96164500738554,
+        "changedRegionMae": 0.015453168189797448,
+        "changedPixels": 301453
+      }
+    },
+    {
+      "scene": "camera-pan",
+      "variant": "fsr3",
+      "frame": 22,
+      "metrics": {
+        "mae": 0.004737963698528431,
+        "rmse": 0.009634002008003047,
+        "psnr": 40.32386535004234,
+        "changedRegionMae": 0.012004217483321408,
+        "changedPixels": 302418
+      }
+    },
+    {
+      "scene": "camera-pan",
+      "variant": "fsr3-optical-only",
+      "frame": 22,
+      "metrics": {
+        "mae": 0.004984802967972226,
+        "rmse": 0.011673603874230366,
+        "psnr": 38.65590095780471,
+        "changedRegionMae": 0.015074230428602668,
+        "changedPixels": 302418
+      }
+    },
+    {
+      "scene": "camera-pan",
+      "variant": "hydra",
+      "frame": 22,
+      "metrics": {
+        "mae": 0.004788357648584578,
+        "rmse": 0.009717828691534152,
+        "psnr": 40.24861522128074,
+        "changedRegionMae": 0.012081911581390967,
+        "changedPixels": 302418
+      }
+    },
+    {
+      "scene": "camera-pan",
+      "variant": "crossfade",
+      "frame": 22,
+      "metrics": {
+        "mae": 0.00509574759889532,
+        "rmse": 0.012616454820163133,
+        "psnr": 37.98125326370564,
+        "changedRegionMae": 0.015456778516658554,
+        "changedPixels": 302418
+      }
+    },
+    {
+      "scene": "camera-pan",
+      "variant": "fsr3",
+      "frame": 23,
+      "metrics": {
+        "mae": 0.004754825554512165,
+        "rmse": 0.00962538356524739,
+        "psnr": 40.33163910246447,
+        "changedRegionMae": 0.012072198459744384,
+        "changedPixels": 303143
+      }
+    },
+    {
+      "scene": "camera-pan",
+      "variant": "fsr3-optical-only",
+      "frame": 23,
+      "metrics": {
+        "mae": 0.005039602330437413,
+        "rmse": 0.012026178475149852,
+        "psnr": 38.397447105440556,
+        "changedRegionMae": 0.015200154932863866,
+        "changedPixels": 303143
+      }
+    },
+    {
+      "scene": "camera-pan",
+      "variant": "hydra",
+      "frame": 23,
+      "metrics": {
+        "mae": 0.004814283649126689,
+        "rmse": 0.009776981589399185,
+        "psnr": 40.19590405230238,
+        "changedRegionMae": 0.01216596047685725,
+        "changedPixels": 303143
+      }
+    },
+    {
+      "scene": "camera-pan",
+      "variant": "crossfade",
+      "frame": 23,
+      "metrics": {
+        "mae": 0.005133003460036384,
+        "rmse": 0.012898509841855067,
+        "psnr": 37.789209212373976,
+        "changedRegionMae": 0.01553322169643801,
+        "changedPixels": 303143
+      }
+    }
+  ],
+  "benchmarks": [
+    {
+      "scene": "static",
+      "variant": "fsr3",
+      "samplesMs": [
+        4.791071000000102,
+        9.585849000000053,
+        4.804596999999831,
+        4.365527999999813,
+        4.3309220000001005,
+        4.5069250000001375,
+        4.265467999999601,
+        4.240530999999464,
+        4.415600999999697,
+        4.466308000000026,
+        4.341150999999627,
+        4.407325999999557,
+        4.443545000000086,
+        5.216315000000577,
+        4.5536220000003595,
+        4.606502999999975,
+        4.203371000000516,
+        4.771233000000393,
+        5.473941000000195,
+        4.568019999999706,
+        4.458632999999281,
+        4.230891999999585,
+        4.851204999999936,
+        4.773608000000422,
+        4.674291000000267,
+        4.653511999999864,
+        4.548573000000033,
+        4.467369999999391,
+        4.65701799999988,
+        4.323979000000691,
+        4.3868469999997615,
+        4.290915999999925,
+        4.327466000000641,
+        4.692785000000185,
+        4.312918000000536,
+        66.7364149999994,
+        4.210404000000381,
+        4.373842999999397,
+        4.385345000000598,
+        5.799736999999368,
+        4.747158000000127,
+        4.830676000000494,
+        5.008200999999644,
+        4.600921999999628,
+        4.78307599999971,
+        4.24784499999987,
+        4.591805000000022,
+        4.959549000000152,
+        4.214162000000215,
+        4.250871000000188,
+        4.491283999999723,
+        4.3350689999997485,
+        4.372781000000032,
+        5.197298999999475,
+        4.914593999999852,
+        4.592166000000361,
+        4.637601999999788,
+        4.5604849999999715,
+        4.882905000000392,
+        4.488289000000805
+      ],
+      "samples": 60,
+      "meanMs": 5.703672049999993,
+      "medianMs": 4.551097500000196,
+      "p95Ms": 5.473941000000195,
+      "speedupVsFsr3": 1
+    },
+    {
+      "scene": "static",
+      "variant": "fsr3-optical-only",
+      "samplesMs": [
+        5.551597000000129,
+        4.265498000000207,
+        4.591183999999885,
+        4.424429000000146,
+        4.947536000000127,
+        4.92225899999994,
+        4.2133300000004965,
+        5.443362999999408,
+        4.896259999999529,
+        4.707092000000557,
+        4.286648000000241,
+        4.419009000000187,
+        4.57516300000043,
+        4.735656000000745,
+        4.513346999999158,
+        6.357670000000326,
+        17.920664999999644,
+        6.00584600000002,
+        5.817208999999821,
+        4.892541999999594,
+        5.512243000000126,
+        15.868467999999666,
+        5.650505000000521,
+        5.85105300000032,
+        4.7721849999998085,
+        4.560836000000563,
+        4.700439999999617,
+        4.608737000000474,
+        5.8441200000006575,
+        4.580673999999817,
+        4.596273999999539,
+        4.403277999999773,
+        4.967374000000746,
+        4.317406000000119,
+        4.380935999999565,
+        4.583559000000605,
+        4.144129000000248,
+        4.1825819999994565,
+        4.318989999999758,
+        15.946735999999873,
+        5.147624999999607,
+        5.458582000000206,
+        4.5013639999997395,
+        5.52183100000002,
+        6.782632999999805,
+        4.336081000000377,
+        5.463582000000315,
+        7.345086000000265,
+        5.4791409999997995,
+        4.48247800000081,
+        4.308639999999286,
+        4.286258000000089,
+        4.781863999999587,
+        15.809897000000092,
+        4.840814999999566,
+        5.010635999999977,
+        6.391944999999396,
+        6.031794999999875,
+        17.69391700000051,
+        4.361849999999322
+      ],
+      "samples": 60,
+      "meanMs": 5.9552141333333415,
+      "medianMs": 4.811339499999576,
+      "p95Ms": 15.868467999999666,
+      "speedupVsFsr3": 0.9459106970108007
+    },
+    {
+      "scene": "static",
+      "variant": "hydra",
+      "samplesMs": [
+        1.9088259999998627,
+        1.8492629999996097,
+        2.020727000000079,
+        2.054179999999633,
+        1.8603149999999005,
+        1.8815049999998337,
+        2.253748000000087,
+        1.8641109999998662,
+        3.311345999999503,
+        1.7309099999993123,
+        2.505562999999711,
+        2.4230870000001232,
+        1.7142180000000735,
+        3.376108000000386,
+        1.7809939999997368,
+        1.8918750000002547,
+        65.17964500000016,
+        2.1431179999999586,
+        2.7663259999999354,
+        3.51085299999977,
+        1.7874360000005254,
+        2.773138000000472,
+        2.4692349999995713,
+        1.7554760000002716,
+        2.5104220000002897,
+        1.7560279999997874,
+        2.1996650000000955,
+        1.7778989999997066,
+        1.6986989999995785,
+        2.4987199999995937,
+        1.7630110000000059,
+        1.9064920000000711,
+        1.8607560000000376,
+        1.7618480000001,
+        2.0649709999997867,
+        14.898274999999558,
+        1.6757250000000568,
+        1.6995110000007116,
+        1.6060540000007677,
+        3.0755300000000716,
+        3.0855389999996987,
+        1.7725780000000668,
+        2.6283549999998286,
+        1.6900329999998576,
+        2.3072590000001583,
+        1.7191069999998945,
+        2.1374479999994946,
+        2.701182000000699,
+        1.6855450000002747,
+        2.2921900000001187,
+        1.6829499999994368,
+        1.6692229999998744,
+        1.7000420000003942,
+        74.59042299999965,
+        1.9974939999992785,
+        1.7362899999998263,
+        1.7378429999998843,
+        3.8677170000000842,
+        2.947008000000096,
+        2.334410000000389
+      ],
+      "samples": 60,
+      "meanMs": 4.630804083333298,
+      "medianMs": 1.9531599999995706,
+      "p95Ms": 3.8677170000000842,
+      "speedupVsFsr3": 2.3301201642472695
+    },
+    {
+      "scene": "thin-bar",
+      "variant": "fsr3",
+      "samplesMs": [
+        4.347103000000061,
+        4.309251000000586,
+        4.508467000001474,
+        4.341161000000284,
+        4.458913000000393,
+        4.260149000001547,
+        4.522925000001123,
+        4.257743000000119,
+        4.492136999999275,
+        54.885818000000654,
+        4.500131000000692,
+        4.569692999999461,
+        5.3161829999990005,
+        17.4721669999999,
+        5.06626099999994,
+        4.644223999999667,
+        5.09197900000072,
+        4.483369999999923,
+        4.564452999999048,
+        4.285897000001569,
+        4.468100999998569,
+        4.410201000000598,
+        4.469763999999486,
+        4.74804899999981,
+        4.308549000001221,
+        18.940081000000646,
+        5.9593279999990045,
+        4.660493999999744,
+        4.9782649999997375,
+        4.2829209999999875,
+        15.090057000001252,
+        4.62641000000076,
+        4.524477000000843,
+        4.587577000000238,
+        4.230180999998993,
+        4.558161000000837,
+        4.543091999999888,
+        4.570975000000544,
+        4.476647000001321,
+        4.233588000000964,
+        4.246451999999408,
+        4.415450999998939,
+        4.653811999998652,
+        4.585152999999991,
+        4.21263799999906,
+        4.688336999999592,
+        4.608747000000221,
+        4.375745999999708,
+        4.566426000001229,
+        15.367981999999756,
+        4.279415000000881,
+        4.734072999999626,
+        4.726079000000027,
+        4.605861000000004,
+        4.460946999999578,
+        4.275066000000152,
+        4.359206000000995,
+        4.6006610000004,
+        4.391867000000275,
+        4.651276999999027
+      ],
+      "samples": 60,
+      "meanMs": 6.19750231666679,
+      "medianMs": 4.533784500000365,
+      "p95Ms": 15.367981999999756,
+      "speedupVsFsr3": 1
+    },
+    {
+      "scene": "thin-bar",
+      "variant": "fsr3-optical-only",
+      "samplesMs": [
+        4.387038000000757,
+        4.242635000000519,
+        5.483829999999216,
+        4.36699999999837,
+        4.260879000001296,
+        4.304242000000158,
+        4.292198999999528,
+        4.206425999998828,
+        4.251291000000492,
+        15.913141999999425,
+        4.312587000000349,
+        5.500892000000022,
+        5.441009000000122,
+        5.61293299999852,
+        4.944930999999997,
+        5.27550599999995,
+        4.710719999999128,
+        4.655174999999872,
+        4.678459000000657,
+        4.983263999998599,
+        5.51816399999916,
+        5.354536000000735,
+        4.340990999999121,
+        4.962304999999105,
+        4.425069999999323,
+        79.08206799999971,
+        4.868857999999818,
+        4.773226999999679,
+        6.176788999999189,
+        4.413196999999855,
+        5.405901999998605,
+        6.634393000000273,
+        4.800708999999188,
+        5.236082000001261,
+        4.487237000001187,
+        5.065018000001146,
+        4.361608999999589,
+        4.574742000000697,
+        4.6727369999989605,
+        4.275847000000795,
+        4.266770000000179,
+        5.482227000000421,
+        4.822059000000081,
+        4.406093999999939,
+        17.834060999999565,
+        5.629815000000235,
+        5.531839999999647,
+        4.497086000001218,
+        5.9067790000008245,
+        5.613945999999487,
+        4.660192999999708,
+        5.434746999999334,
+        4.5221130000009,
+        5.3912049999999,
+        5.453843000001143,
+        4.697162999998909,
+        5.145900999999867,
+        5.845484000001306,
+        4.90956499999993,
+        5.494409999999334
+      ],
+      "samples": 60,
+      "meanMs": 6.579982333333252,
+      "medianMs": 4.889211499999874,
+      "p95Ms": 6.634393000000273,
+      "speedupVsFsr3": 0.9273038198491683
+    },
+    {
+      "scene": "thin-bar",
+      "variant": "hydra",
+      "samplesMs": [
+        2.32912000000033,
+        1.7054520000001503,
+        1.7376230000008945,
+        2.316285999999309,
+        1.8240459999997256,
+        2.8379409999997733,
+        1.7400670000006357,
+        2.8161500000005617,
+        2.264799000000494,
+        3.3872989999999845,
+        3.3942019999994955,
+        1.7261210000015126,
+        2.015117000000828,
+        2.0371589999995194,
+        1.8119129999995494,
+        1.6749650000001566,
+        1.7917950000010023,
+        2.588239999999132,
+        2.131537000001117,
+        1.9900089999991906,
+        1.8271120000008523,
+        3.2898349999995844,
+        1.656318999999712,
+        2.3602590000009513,
+        1.6546560000006139,
+        1.7758949999988545,
+        1.9891680000000633,
+        3.7855820000004314,
+        1.6900529999984428,
+        2.318209000000934,
+        2.051785999999993,
+        2.984097999998994,
+        3.0085629999994126,
+        1.71574099999998,
+        2.120866000001115,
+        2.2995240000000194,
+        2.091531000000032,
+        2.3910670000004757,
+        1.6491449999994074,
+        1.843963999999687,
+        2.2705799999985175,
+        1.6601059999993595,
+        3.1016899999995076,
+        1.766577000000325,
+        4.261539999999513,
+        2.5473519999995915,
+        2.230514000000767,
+        2.456129999998666,
+        2.099496000000727,
+        2.0595110000012937,
+        3.0180710000004183,
+        1.7360290000015084,
+        3.1434280000012222,
+        1.996331000000282,
+        1.7584720000013476,
+        2.0159590000002936,
+        1.771617000000333,
+        2.5317030000005616,
+        3.700550999999905,
+        2.433418000000529
+      ],
+      "samples": 60,
+      "meanMs": 2.28637148333346,
+      "medianMs": 2.0955135000003793,
+      "p95Ms": 3.3942019999994955,
+      "speedupVsFsr3": 2.1635673070106898
+    },
+    {
+      "scene": "textured-objects",
+      "variant": "fsr3",
+      "samplesMs": [
+        4.3378650000013295,
+        4.360037000002194,
+        5.945752999999968,
+        4.637621999998373,
+        4.7137149999980466,
+        4.2797649999993155,
+        4.2176780000008876,
+        4.3393770000002405,
+        67.52607699999862,
+        4.529587000000902,
+        4.494471000001795,
+        4.323437999999442,
+        4.475505000002158,
+        6.2798730000031355,
+        4.640676999999414,
+        4.815536999998585,
+        4.53668000000107,
+        4.441050000001269,
+        4.35117000000173,
+        4.381607999999687,
+        4.571295999998256,
+        4.649774000001344,
+        4.524987999997393,
+        5.164125999999669,
+        4.954480000000331,
+        4.699398000000656,
+        6.260215999998763,
+        6.444825999999011,
+        4.904334999999264,
+        4.875038999998651,
+        13.826469999999972,
+        4.772095000000263,
+        4.499730999999883,
+        4.296656999998959,
+        5.062374000001,
+        5.654032000002189,
+        4.332043999998859,
+        4.86737500000163,
+        4.583417999998346,
+        5.741567000000941,
+        4.333005999997113,
+        4.257022000001598,
+        4.530948999999964,
+        4.539354999997158,
+        17.58236599999873,
+        4.488649999999325,
+        4.199672999999166,
+        4.463132000000769,
+        4.593187999998918,
+        5.212768000001233,
+        4.790870000000723,
+        4.761194999999134,
+        5.353332999999111,
+        4.815035999999964,
+        4.308648999998695,
+        5.02112599999964,
+        4.498679000000266,
+        4.406134000000748,
+        5.389721999999892,
+        4.8451029999996535
+      ],
+      "samples": 60,
+      "meanMs": 6.178361366666589,
+      "medianMs": 4.6154049999986455,
+      "p95Ms": 6.444825999999011,
+      "speedupVsFsr3": 1
+    },
+    {
+      "scene": "textured-objects",
+      "variant": "fsr3-optical-only",
+      "samplesMs": [
+        4.386998000001768,
+        4.204181999997672,
+        5.076159000000189,
+        6.273400999998557,
+        4.543744000002334,
+        4.617624000002252,
+        4.2489669999995385,
+        17.30481200000213,
+        5.217617000002065,
+        4.804336000001058,
+        4.3457500000004075,
+        4.268984000002092,
+        15.648521999999502,
+        4.806109999997716,
+        5.1879509999998845,
+        5.74304900000061,
+        4.621822000000975,
+        4.423506999999518,
+        4.323216999997385,
+        4.447431999997207,
+        5.82162800000151,
+        5.1802370000004885,
+        4.555546999999933,
+        5.017349000001559,
+        4.429398000000219,
+        5.175308000001678,
+        18.01088499999969,
+        5.570933999999397,
+        5.830744999999297,
+        4.420570999998745,
+        6.882040999997116,
+        5.169204999998328,
+        4.2274969999998575,
+        4.259927999999491,
+        7.253562999998394,
+        4.743109999999433,
+        5.951242999999522,
+        4.719805999997334,
+        4.490212000000611,
+        4.264667000003101,
+        4.3463209999972605,
+        4.589540000000852,
+        4.521781999999803,
+        4.323607999998785,
+        71.99682299999768,
+        4.479352000002109,
+        4.2533259999981965,
+        6.5979239999978745,
+        15.647479999999632,
+        4.943830000000162,
+        4.599589999997988,
+        4.74743799999851,
+        7.445965999999316,
+        4.796351000000868,
+        4.307709000000614,
+        4.993103000000701,
+        6.096527000001515,
+        5.175266000002011,
+        4.8504030000003695,
+        5.249106000002939
+      ],
+      "samples": 60,
+      "meanMs": 6.873825049999929,
+      "medianMs": 4.800343500000963,
+      "p95Ms": 15.648521999999502,
+      "speedupVsFsr3": 0.9614739028566851
+    },
+    {
+      "scene": "textured-objects",
+      "variant": "hydra",
+      "samplesMs": [
+        2.1245029999990948,
+        1.6651349999992817,
+        1.7159310000024561,
+        1.8778180000008433,
+        2.3293899999989662,
+        1.7592029999977967,
+        1.7064640000025975,
+        1.6580219999996189,
+        2.0667649999995774,
+        2.358835999999428,
+        1.8118429999994987,
+        1.86157699999967,
+        1.7265820000029635,
+        1.9869330000001355,
+        1.957667999999103,
+        1.764603999999963,
+        2.6205509999999776,
+        1.8297569999995176,
+        1.8564669999977923,
+        2.302489000001515,
+        2.0384109999977227,
+        3.0692980000021635,
+        1.8861829999987094,
+        2.0956789999981993,
+        2.0803110000015295,
+        1.9068120000010822,
+        3.8349639999978535,
+        2.3059360000006563,
+        2.15559199999916,
+        2.229272000000492,
+        2.539136999999755,
+        3.136145000000397,
+        1.7766570000021602,
+        2.1259160000008706,
+        2.309081999999762,
+        3.728332999999111,
+        2.094667000001209,
+        1.89919799999916,
+        1.8766649999997753,
+        1.7952510000031907,
+        1.7398769999999786,
+        1.7309300000015355,
+        1.7292769999985467,
+        2.8170520000021497,
+        3.115104999997129,
+        1.7939189999997325,
+        1.8039879999996629,
+        2.338497999997344,
+        1.8382019999990007,
+        1.9918830000024172,
+        1.7715570000000298,
+        1.8421000000016647,
+        2.308241000002454,
+        3.1701189999985218,
+        2.0388420000017504,
+        2.776003999999375,
+        1.6808249999994587,
+        3.6102499999979045,
+        1.884329999997135,
+        1.7412189999995462
+      ],
+      "samples": 60,
+      "meanMs": 2.1597710833333017,
+      "medianMs": 1.9723004999996192,
+      "p95Ms": 3.1701189999985218,
+      "speedupVsFsr3": 2.3401124727188054
+    },
+    {
+      "scene": "camera-pan",
+      "variant": "fsr3",
+      "samplesMs": [
+        4.877694999999221,
+        4.872845000001689,
+        4.437904000002163,
+        4.483900999999605,
+        4.432372999999643,
+        4.444996999998693,
+        4.628172999997332,
+        4.518706999999267,
+        4.290816000000632,
+        5.784177000001364,
+        4.4787409999989904,
+        4.467509999998583,
+        4.357962999998563,
+        4.551999000002979,
+        4.479091000001063,
+        4.288903000000573,
+        4.285685999999259,
+        4.482398000000103,
+        4.275175999999192,
+        4.316425000000891,
+        4.498558000002959,
+        4.346932000000379,
+        4.836877999998251,
+        5.113209000002826,
+        4.351980999999796,
+        4.310884000002261,
+        4.406425000001036,
+        4.341932999999699,
+        4.459514999998646,
+        4.881421999998565,
+        4.47704800000065,
+        4.606902999999875,
+        4.7520670000012615,
+        4.81637899999987,
+        4.9092840000012075,
+        4.711309999998775,
+        5.488358999999036,
+        4.378993000002083,
+        4.391836999999214,
+        4.359486000001198,
+        4.404471000001649,
+        4.341231999998854,
+        4.290163999998185,
+        4.766074000002845,
+        4.363202000000456,
+        4.477298999998311,
+        4.190816999998788,
+        4.51143299999967,
+        4.3781010000020615,
+        4.218037999999069,
+        4.271690000001399,
+        4.300986000002013,
+        4.238087000001542,
+        4.270627999998396,
+        4.5657350000001315,
+        4.5499760000020615,
+        4.440948999999819,
+        4.565193999998883,
+        4.463392000001477,
+        4.318978999999672
+      ],
+      "samples": 60,
+      "meanMs": 4.518688833333544,
+      "medianMs": 4.45225599999867,
+      "p95Ms": 4.9092840000012075,
+      "speedupVsFsr3": 1
+    },
+    {
+      "scene": "camera-pan",
+      "variant": "fsr3-optical-only",
+      "samplesMs": [
+        5.703255000000354,
+        4.548772999998619,
+        4.449996999999712,
+        5.4624690000018745,
+        4.495902999999089,
+        4.646538000000874,
+        4.646258000000671,
+        4.837858999999298,
+        16.32304699999804,
+        5.78081100000054,
+        4.543863999999303,
+        4.285695999999007,
+        4.34530900000027,
+        16.905747999997402,
+        4.381476999998995,
+        4.301225999999588,
+        4.34275400000115,
+        4.3102729999991425,
+        4.232496000000538,
+        4.401265000000421,
+        4.391466000000946,
+        4.300104000001738,
+        4.509760000000824,
+        6.070778999997856,
+        4.4514689999996335,
+        4.523144999999204,
+        4.266650000001391,
+        4.42921700000079,
+        4.479240999997273,
+        16.31664500000261,
+        4.684178999999858,
+        4.556378000001132,
+        5.8815210000029765,
+        5.907188999997743,
+        15.160609999998996,
+        5.030954000001657,
+        4.21040400000129,
+        4.605530999997427,
+        4.526071000000229,
+        4.281828999999561,
+        4.457611000001634,
+        4.389201999998477,
+        4.382849000001443,
+        4.227135999997699,
+        4.422555000001012,
+        4.1827419999972335,
+        4.223778999999922,
+        5.540106000000378,
+        5.190204999998969,
+        4.379363999996713,
+        4.545227000002342,
+        5.139820000000327,
+        4.427173000000039,
+        4.20644700000048,
+        5.132605999999214,
+        4.320502999999007,
+        4.272191000000021,
+        5.63533599999937,
+        4.240090999999666,
+        4.378942999999708
+      ],
+      "samples": 60,
+      "meanMs": 5.420367433333195,
+      "medianMs": 4.468425999999454,
+      "p95Ms": 15.160609999998996,
+      "speedupVsFsr3": 0.9963812760912263
+    },
+    {
+      "scene": "camera-pan",
+      "variant": "hydra",
+      "samplesMs": [
+        1.8559060000006866,
+        1.931019000003289,
+        1.8085769999997865,
+        1.8258499999974447,
+        2.568922999998904,
+        1.7524109999976645,
+        2.3656689999988885,
+        1.7517600000028324,
+        3.66740800000116,
+        2.248157000001811,
+        1.8823460000021441,
+        1.9427099999993516,
+        1.7738009999993665,
+        2.7889979999999923,
+        1.788248000000749,
+        2.4404910000012023,
+        2.2960669999993115,
+        1.7202390000020387,
+        1.82277299999987,
+        2.3644570000033127,
+        1.7430730000014591,
+        1.9094769999974233,
+        2.409751999999571,
+        1.9036970000015572,
+        3.1281400000007125,
+        1.8142570000018168,
+        1.892945999999938,
+        2.847910000000411,
+        1.751498999998148,
+        2.7547640000011597,
+        1.760906999999861,
+        2.465077000000747,
+        2.0481389999986277,
+        2.032500000001164,
+        3.2714300000006915,
+        2.113151999998081,
+        1.7661169999992126,
+        3.0130930000013905,
+        1.7361999999993714,
+        1.76468400000158,
+        2.1265070000008564,
+        1.6750950000023295,
+        1.6969260000005306,
+        2.0840470000002824,
+        1.9946580000032554,
+        1.6905939999996917,
+        1.690322999998898,
+        1.757820000002539,
+        1.6938799999988987,
+        1.7310099999995145,
+        1.6295590000008815,
+        1.7807240000001912,
+        2.365720000001602,
+        1.6651459999993676,
+        2.0538000000015018,
+        1.74472600000081,
+        1.8719960000016727,
+        1.915569000000687,
+        1.7124949999997625,
+        1.8497740000020713
+      ],
+      "samples": 60,
+      "meanMs": 2.057549883333801,
+      "medianMs": 1.8771710000019084,
+      "p95Ms": 3.0130930000013905,
+      "speedupVsFsr3": 2.3717903163825476
+    }
+  ]
+}

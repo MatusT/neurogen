@@ -140,7 +140,9 @@ export class HydraFrameGenerator {
     this.configured = true;
   }
 
-  prepare(inputs: HydraFrameInputs): void {
+  // Bracket the entire prepare submission, including intervening passes and
+  // buffer clears. Both indices are optional, as in WebGPU timestampWrites.
+  prepare(inputs: HydraFrameInputs, timestampWrites?: GPUComputePassTimestampWrites): void {
     this.requireConfigured();
     if (this.pending) throw new Error("prepare() called twice without dispatch()");
     const { previousToCurrentClip: forward, currentToPreviousClip: backward } = inputs;
@@ -159,7 +161,9 @@ export class HydraFrameGenerator {
     if (inputs.resetHistory) this.hasDepth = false;
     const encoder = this.device.createCommandEncoder({ label: "hydra-prepare" });
     for (const [i, input] of [inputs.previousColor, inputs.currentColor].entries()) {
-      this.draw(encoder, "luma", this.view(this.colors[i]), [[[0, this.linear]], [[0, input]]]);
+      this.draw(encoder, "luma", this.view(this.colors[i]), [[[0, this.linear]], [[0, input]]], false,
+        i === 0 && timestampWrites?.beginningOfPassWriteIndex !== undefined
+          ? { querySet: timestampWrites.querySet, beginningOfPassWriteIndex: timestampWrites.beginningOfPassWriteIndex } : undefined);
       this.mips(encoder, this.colors[i]);
     }
     this.depthIndex ^= 1;
@@ -203,13 +207,14 @@ export class HydraFrameGenerator {
     ]);
     this.draw(encoder, "blur", this.view(this.blurScratch), [[[0, this.linear]], [[0, this.view(this.reprojectionError)]], [], [[0, this.ub("blur-x")]]]);
     this.draw(encoder, "blur", this.view(this.filteredError), [[[0, this.linear]], [[0, this.view(this.blurScratch)]], [], [[0, this.ub("blur-y")]]]);
-    this.mips(encoder, this.filteredError);
+    this.mips(encoder, this.filteredError, timestampWrites?.endOfPassWriteIndex !== undefined
+      ? { querySet: timestampWrites.querySet, endOfPassWriteIndex: timestampWrites.endOfPassWriteIndex } : undefined);
     this.device.queue.submit([encoder.finish()]);
     this.hasDepth = true;
     this.pending = inputs;
   }
 
-  dispatch(): GPUTexture {
+  dispatch(timestampWrites?: GPUComputePassTimestampWrites): GPUTexture {
     this.requireConfigured();
     if (!this.pending) throw new Error("dispatch() called before prepare()");
     const encoder = this.device.createCommandEncoder({ label: "hydra-resolve" });
@@ -218,7 +223,7 @@ export class HydraFrameGenerator {
         [4, this.motionError.createView()], [5, this.masks[0].createView()], [6, this.masks[1].createView()],
         [7, this.filteredError.createView()], [8, this.view(this.reprojection[0])], [9, this.view(this.reprojection[1])]],
       [[0, this.pending.previousColor], [1, this.pending.currentColor]], [], [[0, this.ub("scale")]],
-    ]);
+    ], false, timestampWrites);
     this.device.queue.submit([encoder.finish()]);
     this.pending = null;
     return this.output;
@@ -269,9 +274,11 @@ export class HydraFrameGenerator {
       layout: pipeline.getBindGroupLayout(group), entries: entries.map(([binding, resource]) => ({ binding, resource })),
     })));
   }
-  private draw(encoder: GPUCommandEncoder, name: string, target: GPUTextureView, groups: readonly Bindings[], mesh = false): void {
+  private draw(encoder: GPUCommandEncoder, name: string, target: GPUTextureView, groups: readonly Bindings[], mesh = false,
+    timestampWrites?: GPURenderPassTimestampWrites): void {
     const pipeline = this.pipelines.get(name)! as GPURenderPipeline;
-    const pass = encoder.beginRenderPass({ label: `hydra-${name}`, colorAttachments: [{ view: target, loadOp: "clear", storeOp: "store", clearValue: [0, 0, 0, 0] }] });
+    const pass = encoder.beginRenderPass({ label: `hydra-${name}`, timestampWrites,
+      colorAttachments: [{ view: target, loadOp: "clear", storeOp: "store", clearValue: [0, 0, 0, 0] }] });
     pass.setPipeline(pipeline);
     this.bind(pass, pipeline, groups);
     if (mesh) { pass.setIndexBuffer(this.indices, "uint32"); pass.drawIndexed(this.indexCount); }
@@ -281,10 +288,10 @@ export class HydraFrameGenerator {
   private clear(encoder: GPUCommandEncoder, texture: GPUTexture, clearValue: GPUColor): void {
     encoder.beginRenderPass({ colorAttachments: [{ view: this.view(texture), loadOp: "clear", storeOp: "store", clearValue }] }).end();
   }
-  private mips(encoder: GPUCommandEncoder, texture: GPUTexture): void {
+  private mips(encoder: GPUCommandEncoder, texture: GPUTexture, finalTimestampWrites?: GPURenderPassTimestampWrites): void {
     for (let level = 1; level < texture.mipLevelCount; level++) this.draw(encoder, `mip-${texture.format}`, this.view(texture, level), [
       [[0, this.view(texture, level - 1)], [1, this.linear]],
-    ]);
+    ], false, level === texture.mipLevelCount - 1 ? finalTimestampWrites : undefined);
   }
   private depthPyramid(encoder: GPUCommandEncoder, input: GPUTextureView, target: GPUTexture): void {
     for (let level = 0; level < target.mipLevelCount; level++) this.draw(encoder, "depth", this.view(target, level), [

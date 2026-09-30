@@ -55,12 +55,12 @@ device depth in R. See the [Hydra contract, pass graph, and limitations](referen
 The port uses the supplied-transform path and has known quality failures on
 thin fast-moving objects; native-library equivalence has not been established.
 
-## Reproducible quality comparison
+## Reproducible quality and performance comparison
 
 ```sh
 npm run quality
-# Optional resolution/output overrides:
-npm run quality -- --size 640x360 --out artifacts/quality-small
+# Optional resolution/output and benchmark repetition overrides:
+npm run quality -- --size 640x360 --out artifacts/quality-small --benchmark-runs 10
 ```
 
 Open `artifacts/quality/report.html` for full-size PNG comparisons and error
@@ -68,6 +68,36 @@ images. `results.json` records each frame's linear RGB MAE/RMSE/PSNR, error over
 changed pixels, marker geometry failures, GPU information, source hash, and Git
 revision. The command processes 24 deterministic real frames and scores the
 last six against ground truth rendered directly at the midpoint.
+
+The same report includes mean, median, and p95 GPU execution time and end-to-end
+interpolation latency for each backend and scene, plus speed relative to FSR3
+within each timing method (FSR3 median / backend median; greater than 1 means
+faster). Benchmarks run separately from quality readbacks.
+By default, five independent replays each warm up on frames 1–17 and measure
+frames 18–23, giving 30 samples per backend per scene. `--benchmark-runs` accepts
+1–100; more repetitions help assess timing variability. Backend order rotates
+between frames and runs. Raw samples and benchmark settings are in `results.json`.
+
+GPU timing automatically enables WebGPU's optional `timestamp-query` feature
+when supported. It measures the first pass beginning to the last pass end within
+each of `prepare()` and `dispatch()`, then adds those two GPU durations. This
+includes intervening GPU passes, clears, and transitions while excluding CPU
+encoding/submission, the gap between submissions, and uniform uploads before the
+first pass. Query resolve and readback happen outside both timing measurements.
+GPU timestamps are converted from nanoseconds to milliseconds; raw per-phase
+durations are saved in `results.json`. Timestamp granularity and instrumentation
+can affect results. Unsupported adapters report GPU timing as unavailable.
+
+End-to-end timing covers `prepare()` + `dispatch()` through GPU queue completion, including
+CPU encoding/submission and completion notification. Earlier GPU work is drained
+before timing. Setup, scene rendering, image readback, and quality metrics are
+excluded. Neither timing method measures game FPS. The CPU crossfade quality
+baseline is not benchmarked.
+
+Both generators accept optional `timestampWrites` descriptors as the second
+argument of `prepare(inputs, timestampWrites)` and the first argument of
+`dispatch(timestampWrites)`. Callers own the query set and its resolve/readback
+buffers, and must request `timestamp-query` when creating their device.
 
 Cases cover a static image, a thin moving bar, textured moving objects, and camera
 translation. Variants are FSR3 with game motion vectors, FSR3 with zero vectors,

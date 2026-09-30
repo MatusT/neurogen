@@ -117,7 +117,8 @@ export class FrameGenerator {
     this.neuralWeights = weights;
   }
 
-  prepare(inputs: FrameGeneratorInputs): void {
+  // Optional timestamp writes require a device with timestamp-query enabled.
+  prepare(inputs: FrameGeneratorInputs, timestampWrites?: GPUComputePassTimestampWrites): void {
     const { opticalFlow, frameInterpolation } = this.stages();
     if (this.pending) {
       throw new Error("prepare() called twice without an intervening dispatch()");
@@ -129,7 +130,7 @@ export class FrameGenerator {
     opticalFlow.setFrameIndex(this.frameIndex);
 
     const encoder = this.device.createCommandEncoder({ label: "neurogen-prepare" });
-    const pass = encoder.beginComputePass();
+    const pass = encoder.beginComputePass({ timestampWrites });
     // Frame interpolation's setup pass reads this frame's scene-change verdict,
     // so it has to follow the whole optical flow chain, not precede it.
     opticalFlow.encode(pass, inputs.currentColor, inputs.previousColor);
@@ -141,14 +142,14 @@ export class FrameGenerator {
   // Runs the blend and inpainting and returns the interpolated frame: the frame
   // midway between the two handed to prepare(). Owned by this generator, in
   // INTERPOLATED_TEXTURE_FORMAT, and overwritten by the next dispatch().
-  dispatch(): GPUTexture {
+  dispatch(timestampWrites?: GPUComputePassTimestampWrites): GPUTexture {
     const { frameInterpolation, output } = this.stages();
     if (!this.pending) {
       throw new Error("dispatch() called before prepare()");
     }
 
     const encoder = this.device.createCommandEncoder({ label: "neurogen-dispatch" });
-    const pass = encoder.beginComputePass();
+    const pass = encoder.beginComputePass({ timestampWrites });
     frameInterpolation.encodeDispatch(pass, this.pending);
     output.encode(pass);
     pass.end();
