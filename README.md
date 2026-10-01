@@ -51,7 +51,8 @@ The common call above assumes a stationary camera. For Hydra camera motion,
 provide both `previousToCurrentClip` and `currentToPreviousClip`; instantiate
 `HydraFrameGenerator` directly when game motion vectors are unavailable.
 Depth is a single-sampled float color texture (for example `r32float`) containing
-device depth in R. See the [Hydra contract, pass graph, and limitations](reference/hydra/README.md).
+device depth in R. See the [Hydra algorithm overview](src/wgsl/hydra/README.md)
+and the [input contract, detailed pass graph, and limitations](reference/hydra/README.md).
 The port uses the supplied-transform path and has known quality failures on
 thin fast-moving objects; native-library equivalence has not been established.
 

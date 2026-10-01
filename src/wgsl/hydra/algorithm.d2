@@ -1,0 +1,47 @@
+# Overview of the current WebGPU implementation; related passes are grouped.
+# Render with: d2 --layout=tala --pad=24 src/wgsl/hydra/algorithm.d2 src/wgsl/hydra/algorithm.svg
+direction: down
+
+frames: Previous + current color {
+  left: 80
+  top: 0
+  style.fill: "#E8F1FC"
+}
+geometry: Depth history + camera transforms {
+  left: 490
+  top: 0
+  style.fill: "#E8F1FC"
+}
+luma: Luminance pyramids {
+  left: 80
+  top: 110
+}
+optical: Optical flow\nBlock search + match + unused masks {
+  left: 0
+  top: 230
+  style.fill: "#E5F4EA"
+}
+camera: Camera reprojection\nDepth mesh + match + error blur {
+  left: 490
+  top: 230
+  style.fill: "#FFF0D9"
+}
+resolve: Full-resolution resolve\nFallback + optical + camera {
+  left: 250
+  top: 420
+  style.fill: "#EEE7F7"
+}
+output: Midpoint frame\nt = 0.5 {
+  left: 290
+  top: 550
+  style.fill: "#E8F1FC"
+}
+
+frames -> luma
+luma -> optical
+geometry -> camera
+luma -> camera: match luminance
+frames -> resolve: original colors
+optical -> resolve: half-motion + quality
+camera -> resolve: UV offsets + quality
+resolve -> output

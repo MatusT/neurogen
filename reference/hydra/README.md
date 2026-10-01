@@ -14,6 +14,8 @@ The bundle's generic variables and reconstructed names are evidence aids.
 Original author identifiers and an open-source license were not recovered.
 
 The application executes the hand-cleaned WGSL in `src/wgsl/hydra`.
+See the [algorithm overview](../../src/wgsl/hydra/README.md) for a walkthrough of
+the shader stages and their blend logic.
 `scripts/port-hydra.py` can regenerate mechanical reference translations with
 `glslangValidator` and `naga`; these go to ignored `reference/hydra/translated`.
 The script deliberately does not overwrite the cleaned shaders.
